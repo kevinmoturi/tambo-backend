@@ -1,15 +1,13 @@
 import mongoose from 'mongoose';
+import config from './config';
 
 const connectDB = async (): Promise<void> => {
-  const uri = process.env.MONGODB_URI;
-
-  if (!uri) {
-    console.warn('MONGODB_URI is not set. Skipping MongoDB connection.');
-    return;
+  if (!config.mongodbUri) {
+    throw new Error('MONGODB_URI is not set. Cannot start without a database.');
   }
 
   try {
-    await mongoose.connect(uri);
+    await mongoose.connect(config.mongodbUri);
     console.log('MongoDB connected successfully');
   } catch (error) {
     console.error('MongoDB connection error:', error);
