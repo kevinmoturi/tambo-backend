@@ -153,7 +153,12 @@ tokens, rotation/revocation), theft episodes (owner mark-stolen/recovered,
 DB-enforced single open episode, race-converging opener - the seam F-B's
 threshold trigger calls), trusted contacts (real consent state machine,
 single-use atomic accept/decline links, cooldown-limited nominations).
-Next: **F-B evidence ingest.**
+**F-B DONE (2026-09-05)**: idempotent hash-verified envelope ingest with
+per-envelope ACKs, device-token auth, server-clock threshold trigger that
+auto-opens episodes and back-attaches the leading evidence, GridFS media
+uploads (hash-verified, idempotent, size-capped) behind a storage seam, and
+retention-as-code (TTL indexes + hourly GridFS sweep).
+Next: **F-C evidence pack & delivery.**
 
 ### The feature plan
 Planned in detail in [evidence-features-plan.md](evidence-features-plan.md):

@@ -39,7 +39,8 @@ curl localhost:3000/api/health
 
 - [docs/architecture.md](docs/architecture.md) — layering, conventions, how a request flows
 - [docs/auth-api.md](docs/auth-api.md)
-- [docs/devices-api.md](docs/devices-api.md) — devices, theft episodes, trusted contacts (F-A) — endpoint reference and error codes
+- [docs/devices-api.md](docs/devices-api.md) — devices, theft episodes, trusted contacts (F-A)
+- [docs/evidence-api.md](docs/evidence-api.md) — evidence ingest: envelopes, media, retention (F-B) — endpoint reference and error codes
 - [docs/evidence-features-plan.md](docs/evidence-features-plan.md) — the next three features: devices/episodes, evidence ingest, pack & delivery
 - [docs/cloudflare.md](docs/cloudflare.md) — operator runbook: Resend DNS, proxying, TRUST_PROXY
 - [docs/security.md](docs/security.md) — the threat model and what defends against what
