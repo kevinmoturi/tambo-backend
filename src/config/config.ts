@@ -44,6 +44,22 @@ interface Config {
     /** Minimum seconds between nomination emails for one contact. */
     nominationCooldownSeconds: number;
   };
+  evidence: {
+    /** Routine envelopes (no theft episode) self-delete after this. */
+    retentionRoutineDays: number;
+    /** Envelopes attached to a theft episode live this long. */
+    retentionEpisodeDays: number;
+    /** UNLOCK_FAILED events inside this window count toward the threshold. */
+    thresholdWindowMinutes: number;
+    /** When an episode opens, envelopes received this recently are pulled in. */
+    backAttachMinutes: number;
+    /** Envelopes per ingest batch. */
+    maxBatch: number;
+    /** Per-envelope payload string length. */
+    maxPayloadChars: number;
+    /** Photo upload cap, bytes. */
+    maxMediaBytes: number;
+  };
   /**
    * Public base URL of THIS API, used to build links a browser opens (e.g.
    * trusted-contact consent links). Distinct from mail.appUrl, which is the
@@ -158,6 +174,18 @@ const config: Config = {
     consentTtlDays: Number(process.env.CONSENT_TTL_DAYS) || 14,
     nominationCooldownSeconds:
       Number(process.env.NOMINATION_COOLDOWN_SECONDS) || 300,
+  },
+  evidence: {
+    retentionRoutineDays:
+      Number(process.env.EVIDENCE_RETENTION_ROUTINE_DAYS) || 90,
+    retentionEpisodeDays:
+      Number(process.env.EVIDENCE_RETENTION_EPISODE_DAYS) || 365,
+    thresholdWindowMinutes: Number(process.env.THRESHOLD_WINDOW_MINUTES) || 10,
+    backAttachMinutes: Number(process.env.BACK_ATTACH_MINUTES) || 60,
+    maxBatch: Number(process.env.EVIDENCE_MAX_BATCH) || 100,
+    maxPayloadChars: Number(process.env.EVIDENCE_MAX_PAYLOAD_CHARS) || 8000,
+    maxMediaBytes:
+      Number(process.env.EVIDENCE_MAX_MEDIA_BYTES) || 8 * 1024 * 1024,
   },
   publicApiUrl:
     process.env.API_PUBLIC_URL ||

@@ -43,6 +43,9 @@ export const register = async (
     deviceModel: input.deviceModel,
     ...(input.colour ? { colour: input.colour } : {}),
     ...(input.purchaseInfo ? { purchaseInfo: input.purchaseInfo } : {}),
+    ...(input.failedUnlockThreshold
+      ? { failedUnlockThreshold: input.failedUnlockThreshold }
+      : {}),
     ingestTokenHash: hashOpaqueToken(ingestToken),
   });
 
@@ -66,6 +69,9 @@ export const update = async (
   if (input.colour !== undefined) device.colour = input.colour;
   if (input.purchaseInfo !== undefined)
     device.purchaseInfo = input.purchaseInfo;
+  if (input.failedUnlockThreshold !== undefined) {
+    device.failedUnlockThreshold = input.failedUnlockThreshold;
+  }
 
   await device.save();
   return device;

@@ -22,6 +22,7 @@ export const deviceSchema = z.object({
   deviceModel: shortText,
   colour: shortText.optional(),
   purchaseInfo: z.string().trim().min(1).max(500).optional(),
+  failedUnlockThreshold: z.number().int().min(1).max(10).optional(),
 });
 
 export const deviceUpdateSchema = deviceSchema

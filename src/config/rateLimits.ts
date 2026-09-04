@@ -29,4 +29,8 @@ export const rateLimits = {
   contactNomination: { limit: 5, windowSeconds: 60 * 60 },
   /** Public consent links. Keyed on IP. */
   consent: { limit: 30, windowSeconds: 15 * 60 },
+  /** Evidence batches. Keyed per device; a live trail is bursty but small. */
+  evidenceIngest: { limit: 240, windowSeconds: 60 * 60 },
+  /** Photo uploads. Keyed per device. */
+  mediaUpload: { limit: 60, windowSeconds: 60 * 60 },
 } satisfies Record<string, RateLimitRule>;

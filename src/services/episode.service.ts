@@ -53,6 +53,12 @@ export const openEpisode = async (
   }
 };
 
+/** The device's open episode, if any - evidence ingest attaches to it. */
+export const findOpenForDevice = (
+  deviceId: import('mongoose').Types.ObjectId,
+): Promise<ITheftEpisode | null> =>
+  TheftEpisode.findOne({ device: deviceId, status: 'open' }).exec();
+
 /** Owner marks the device stolen (from another device). Idempotent. */
 export const markStolen = async (
   userId: string,

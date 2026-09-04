@@ -28,6 +28,11 @@ export interface IDevice extends Document<Types.ObjectId> {
   /** Free text: vendor, date, price, receipt no - whatever the owner has. */
   purchaseInfo?: string;
   status: DeviceStatus;
+  /**
+   * Failed credential attempts (within the server's counting window) that
+   * auto-open a theft episode. The F1 spike suggests 2-3; owner-tunable.
+   */
+  failedUnlockThreshold: number;
   ingestTokenHash?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -48,6 +53,7 @@ const deviceSchema = new Schema<IDevice>(
     colour: { type: String, trim: true },
     purchaseInfo: { type: String, trim: true },
     status: { type: String, enum: DEVICE_STATUSES, default: 'active' },
+    failedUnlockThreshold: { type: Number, default: 3, min: 1, max: 10 },
     // never selected by default; the ingest-auth middleware queries BY hash
     ingestTokenHash: {
       type: String,

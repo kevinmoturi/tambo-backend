@@ -33,7 +33,7 @@ export const verifyAccessToken = (token: string): AccessTokenPayload => {
 };
 
 /** The one sha256-hex idiom in the codebase; every hashing call site shares it. */
-export const sha256Hex = (value: string): string =>
+export const sha256Hex = (value: string | Buffer): string =>
   crypto.createHash('sha256').update(value).digest('hex');
 
 /**
