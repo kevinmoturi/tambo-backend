@@ -36,6 +36,20 @@ interface Config {
     /** Minimum seconds between sends for one challenge. */
     resendCooldownSeconds: number;
   };
+  trustedContacts: {
+    /** Per user. Alerts fan out to each; keep the blast radius small. */
+    max: number;
+    /** How long a consent (accept/decline) link stays valid. */
+    consentTtlDays: number;
+    /** Minimum seconds between nomination emails for one contact. */
+    nominationCooldownSeconds: number;
+  };
+  /**
+   * Public base URL of THIS API, used to build links a browser opens (e.g.
+   * trusted-contact consent links). Distinct from mail.appUrl, which is the
+   * mobile deep-link scheme.
+   */
+  publicApiUrl: string;
   mail: {
     /** 'console' logs to stdout, 'noop' discards. Real providers slot in here. */
     driver: MailDriver;
@@ -139,6 +153,15 @@ const config: Config = {
     resendCooldownSeconds:
       Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60,
   },
+  trustedContacts: {
+    max: Number(process.env.TRUSTED_CONTACTS_MAX) || 3,
+    consentTtlDays: Number(process.env.CONSENT_TTL_DAYS) || 14,
+    nominationCooldownSeconds:
+      Number(process.env.NOMINATION_COOLDOWN_SECONDS) || 300,
+  },
+  publicApiUrl:
+    process.env.API_PUBLIC_URL ||
+    `http://localhost:${Number(process.env.PORT) || 3000}`,
   mail: {
     driver: parseMailDriver(),
     from: process.env.MAIL_FROM || 'Tambo <no-reply@tambo.local>',

@@ -25,4 +25,8 @@ export const rateLimits = {
   otpVerify: { limit: 15, windowSeconds: 15 * 60 },
   /** Mailbox flooding via resend. Keyed on IP; per-challenge cooldown on top. */
   otpResend: { limit: 6, windowSeconds: 10 * 60 },
+  /** Nomination emails go to a third party; per-contact cooldown on top. */
+  contactNomination: { limit: 5, windowSeconds: 60 * 60 },
+  /** Public consent links. Keyed on IP. */
+  consent: { limit: 30, windowSeconds: 15 * 60 },
 } satisfies Record<string, RateLimitRule>;

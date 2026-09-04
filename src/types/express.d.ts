@@ -1,3 +1,4 @@
+import type { IDevice } from '../models/device.model';
 import type { UserRole } from '../models/user.model';
 
 declare global {
@@ -9,6 +10,8 @@ declare global {
         userId: string;
         role: UserRole;
       };
+      /** Set by requireDeviceToken (evidence ingest). Absent elsewhere. */
+      device?: IDevice;
     }
   }
 }
