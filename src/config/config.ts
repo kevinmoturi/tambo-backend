@@ -10,7 +10,7 @@ dotenv.config();
 const rawNodeEnv = process.env.NODE_ENV;
 const isLocalEnv = rawNodeEnv === 'development' || rawNodeEnv === 'test';
 
-const MAIL_DRIVERS = ['console', 'noop'] as const;
+const MAIL_DRIVERS = ['console', 'noop', 'resend'] as const;
 type MailDriver = (typeof MAIL_DRIVERS)[number];
 
 interface Config {
@@ -28,10 +28,20 @@ interface Config {
   passwordReset: {
     ttlMinutes: number;
   };
+  otp: {
+    /** How long a code stays valid. */
+    ttlMinutes: number;
+    /** Wrong guesses before the challenge burns. 6 digits = 1e6 codes, so keep small. */
+    maxAttempts: number;
+    /** Minimum seconds between sends for one challenge. */
+    resendCooldownSeconds: number;
+  };
   mail: {
     /** 'console' logs to stdout, 'noop' discards. Real providers slot in here. */
     driver: MailDriver;
     from: string;
+    /** Required when driver is 'resend'; validated at boot. */
+    resendApiKey: string;
     /** Deep-link base the mobile app handles, used to build reset links. */
     appUrl: string;
   };
@@ -100,6 +110,9 @@ const parseMailDriver = (): MailDriver => {
       `MAIL_DRIVER must be one of: ${MAIL_DRIVERS.join(', ')}; got "${raw}".`,
     );
   }
+  if (raw === 'resend' && !process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY must be set when MAIL_DRIVER is "resend".');
+  }
   return raw as MailDriver;
 };
 
@@ -120,9 +133,16 @@ const config: Config = {
   passwordReset: {
     ttlMinutes: Number(process.env.PASSWORD_RESET_TTL_MINUTES) || 60,
   },
+  otp: {
+    ttlMinutes: Number(process.env.OTP_TTL_MINUTES) || 10,
+    maxAttempts: Number(process.env.OTP_MAX_ATTEMPTS) || 5,
+    resendCooldownSeconds:
+      Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60,
+  },
   mail: {
     driver: parseMailDriver(),
     from: process.env.MAIL_FROM || 'Tambo <no-reply@tambo.local>',
+    resendApiKey: process.env.RESEND_API_KEY || '',
     appUrl: process.env.APP_URL || 'tambo://',
   },
   rateLimit: {

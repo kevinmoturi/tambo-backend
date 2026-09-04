@@ -21,4 +21,8 @@ export const rateLimits = {
   resetPassword: { limit: 10, windowSeconds: 60 * 60 },
   /** Generous: a legitimate app refreshes on a timer. Keyed on IP. */
   refresh: { limit: 60, windowSeconds: 60 * 60 },
+  /** Online code guessing. Keyed on IP; per-challenge attempts cap on top. */
+  otpVerify: { limit: 15, windowSeconds: 15 * 60 },
+  /** Mailbox flooding via resend. Keyed on IP; per-challenge cooldown on top. */
+  otpResend: { limit: 6, windowSeconds: 10 * 60 },
 } satisfies Record<string, RateLimitRule>;

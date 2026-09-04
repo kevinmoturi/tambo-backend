@@ -7,9 +7,12 @@ import { AppError } from '../../utils/appError';
 import { isDuplicateKeyError } from '../../utils/mongoErrors';
 import { generateOpaqueToken, hashOpaqueToken } from '../../utils/tokens';
 import { mailer } from '../mailer';
+import * as otpService from '../otp.service';
+import type { ChallengeSummary } from '../otp.service';
 import * as sessionService from '../session.service';
 import type { TokenPair } from '../session.service';
 import type {
+  ChangeEmailInput,
   ChangePasswordInput,
   LoginInput,
   RegisterInput,
@@ -18,9 +21,10 @@ import type {
 
 /**
  * Email + password credentials. This module is the ONLY place that knows about
- * passwords; session issuance lives in session.service. A future
- * otp.credential.ts implements the same shape for phone login and reuses the
- * exact same session machinery.
+ * passwords; session issuance lives in session.service and every
+ * authentication-changing action is completed through an emailed OTP
+ * (otp.service). A future otp SMS credential implements the same shape for
+ * phone login and reuses the exact same session machinery.
  */
 
 export interface AuthResult {
@@ -40,13 +44,13 @@ const hashPassword = (plain: string): Promise<string> =>
   bcrypt.hash(plain, config.bcryptRounds);
 
 /**
- * The single mechanism for setting a password. Every credential an attacker
- * might be holding dies with it: all refresh sessions are revoked AND every
- * outstanding password-reset token is invalidated - otherwise a reset link
- * issued before the change could take the account straight back.
+ * The single mechanism for setting a password directly (the reset flow, where
+ * the token itself is the proof). Every credential an attacker might be
+ * holding dies with it: all refresh sessions are revoked AND every outstanding
+ * password-reset token is invalidated.
  *
- * Any future flow that sets a password (admin reset, adding a password to an
- * OTP-only account) MUST go through this function, not hash-and-save directly.
+ * Interactive password changes go through the OTP flow instead
+ * (changePassword below), which applies the same revocations on verify.
  */
 const setPassword = async (user: IUser, newPassword: string): Promise<void> => {
   user.passwordHash = await hashPassword(newPassword);
@@ -61,10 +65,14 @@ const setPassword = async (user: IUser, newPassword: string): Promise<void> => {
   ]);
 };
 
+/**
+ * Creates the (unverified) account and opens a signup challenge. Tokens are
+ * only issued once the emailed code proves the mailbox - see otp.service.
+ */
 export const register = async (
   input: RegisterInput,
   userAgent?: string,
-): Promise<AuthResult> => {
+): Promise<ChallengeSummary> => {
   // No exists() pre-check: the unique index is the authority, and translating
   // its violation avoids the race where two concurrent registrations both pass
   // a pre-check and the loser surfaces as a 500.
@@ -85,13 +93,18 @@ export const register = async (
     throw error;
   }
 
-  return { user, tokens: await sessionService.startSession(user, userAgent) };
+  return otpService.createChallenge(user, 'signup', { userAgent });
 };
 
+/**
+ * Password check first, then an OTP to the registered mailbox; tokens are
+ * issued only when the code is verified. (An unverified signup heals here:
+ * the login code proves the mailbox just as well.)
+ */
 export const login = async (
   input: LoginInput,
   userAgent?: string,
-): Promise<AuthResult> => {
+): Promise<ChallengeSummary> => {
   const user = await User.findOne({ email: input.email }).select(
     '+passwordHash',
   );
@@ -109,19 +122,20 @@ export const login = async (
     );
   }
 
-  return { user, tokens: await sessionService.startSession(user, userAgent) };
+  return otpService.createChallenge(user, 'login', { userAgent });
 };
 
 /**
- * Changing a password revokes every existing session AND every outstanding
- * reset link, then hands back a fresh pair - so a user who changes their
- * password because they suspect compromise actually evicts the attacker.
+ * Step 1 of a password change: prove the current password, then park the NEW
+ * password's hash on an OTP challenge. Nothing changes until the emailed code
+ * is verified; the verify step applies the hash and revokes every other
+ * session and outstanding reset link.
  */
 export const changePassword = async (
   userId: string,
   input: ChangePasswordInput,
   userAgent?: string,
-): Promise<AuthResult> => {
+): Promise<ChallengeSummary> => {
   const user = await User.findById(userId).select('+passwordHash');
   if (!user) throw AppError.unauthorized();
 
@@ -139,14 +153,67 @@ export const changePassword = async (
     );
   }
 
-  await setPassword(user, input.newPassword);
-  return { user, tokens: await sessionService.startSession(user, userAgent) };
+  return otpService.createChallenge(user, 'password_change', {
+    pendingPasswordHash: await hashPassword(input.newPassword),
+    userAgent,
+  });
+};
+
+/**
+ * Step 1 of an email change: prove the password, check the new address is
+ * free, then send the code to the NEW address - possession of the new mailbox
+ * is what authorizes the change. Applied on verify, which also revokes every
+ * other session (the login identifier changed).
+ */
+export const changeEmail = async (
+  userId: string,
+  input: ChangeEmailInput,
+  userAgent?: string,
+): Promise<ChallengeSummary> => {
+  const user = await User.findById(userId).select('+passwordHash');
+  if (!user) throw AppError.unauthorized();
+
+  if (!user.passwordHash) {
+    throw AppError.badRequest(
+      'This account has no password set.',
+      'no_password_credential',
+    );
+  }
+
+  if (!(await bcrypt.compare(input.password, user.passwordHash))) {
+    throw AppError.unauthorized(
+      'Password is incorrect.',
+      'invalid_credentials',
+    );
+  }
+
+  if (input.newEmail === user.email) {
+    throw AppError.badRequest(
+      "That is already this account's email address.",
+      'email_unchanged',
+    );
+  }
+
+  // Early courtesy check; the verify step re-checks atomically since the
+  // address can be claimed while the code is in flight.
+  if (await User.exists({ email: input.newEmail })) {
+    throw AppError.conflict(
+      'An account with that email already exists.',
+      'email_taken',
+    );
+  }
+
+  return otpService.createChallenge(user, 'email_change', {
+    pendingEmail: input.newEmail,
+    userAgent,
+  });
 };
 
 /**
  * Always resolves, whether or not the email exists - the endpoint must not
  * reveal who has an account. Any outstanding reset token is invalidated so only
- * the newest link works.
+ * the newest link works. Link-based rather than challenge-based on purpose:
+ * returning a challengeId here would leak which emails are registered.
  */
 export const requestPasswordReset = async (email: string): Promise<void> => {
   const user = await User.findOne({ email });
