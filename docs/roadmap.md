@@ -63,11 +63,17 @@ end-to-end against the Atlas cluster. Committed and pushed 2026-09-04.**
 1. ✅ **Commit the work** — committed as a series and pushed (2026-09-04).
 2. ✅ **Rotate the Atlas password** — rotated (2026-09-04); `.env` updated and
    the connection verified.
-3. ⬜ **Email-provider setup** (Resend/SES/Postmark + sending domain +
-   SPF/DKIM) — owner will provide credentials later. Still the long pole
-   before launch; everything email-dependent below waits on it.
+3. ⬜ **Provider setup: email AND SMS, decided together** (email:
+   Resend/SES/Postmark + sending domain + SPF/DKIM; SMS: e.g. Africa's
+   Talking/Twilio) — owner will provide later. The long pole before launch;
+   the email-gated batch AND phone OTP both wait on it.
 
-### ⬜ Phone OTP login — next feature, designed-for but not built
+### ⬜ Phone OTP login — designed-for, ON HOLD until providers are settled
+
+**Owner's call (2026-09-04): do not start until the SMS/notification provider
+is chosen, settled alongside the email provider.** Both feed the same
+`Notifier` seam, so picking them together avoids building the abstraction
+twice. Everything below is ready to go the moment that lands.
 Already in place: `phone`/`phoneVerifiedAt` fields (no migration),
 `passwordHash` optional (OTP-only accounts are valid), credential-agnostic
 sessions (token issuance/rotation/revocation reused unchanged), rate-limit
