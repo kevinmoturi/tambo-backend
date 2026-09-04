@@ -147,7 +147,15 @@ real mail driver, account lockout, 2FA, OpenAPI spec, CI pipeline.
   correct for mobile-only).
 - `NODE_ENV=production` + real `JWT_ACCESS_SECRET` (boot fails without it).
 
-### ⬜ NEXT BUILD: the first three major product features
+### 🔶 IN PROGRESS: the first three major product features
+**F-A DONE (2026-09-05)**: devices (owner-entered IMEIs, one-shot ingest
+tokens, rotation/revocation), theft episodes (owner mark-stolen/recovered,
+DB-enforced single open episode, race-converging opener - the seam F-B's
+threshold trigger calls), trusted contacts (real consent state machine,
+single-use atomic accept/decline links, cooldown-limited nominations).
+Next: **F-B evidence ingest.**
+
+### The feature plan
 Planned in detail in [evidence-features-plan.md](evidence-features-plan.md):
 **F-A** Devices, Theft Episodes & Trusted Contacts (device tokens, mark-stolen,
 consent state machine) → **F-B** Evidence Ingest (idempotent envelopes, hash
