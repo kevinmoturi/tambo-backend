@@ -16,6 +16,12 @@ export interface IUser extends Document<Types.ObjectId> {
   role: UserRole;
   emailVerifiedAt?: Date;
   phoneVerifiedAt?: Date;
+  /**
+   * Watermark for "sign out everywhere": any refresh token CREATED at or
+   * before this instant is dead, even if a concurrent rotation wrote it after
+   * the bulk revoke ran. Checked at use time in session.service.refresh.
+   */
+  sessionsInvalidatedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +46,7 @@ const userSchema = new Schema<IUser>(
     role: { type: String, enum: USER_ROLES, default: 'user' },
     emailVerifiedAt: { type: Date },
     phoneVerifiedAt: { type: Date },
+    sessionsInvalidatedAt: { type: Date },
   },
   {
     timestamps: true,
