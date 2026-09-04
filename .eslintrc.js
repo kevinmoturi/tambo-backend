@@ -11,8 +11,17 @@ module.exports = {
     'plugin:@typescript-eslint/recommended',
     'prettier',
   ],
+  rules: {
+    // Express identifies error middleware by arity, so unused `_next` must stay.
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+    ],
+  },
   env: {
     node: true,
-    es6: true,
+    es2020: true,
+    jest: true,
   },
+  ignorePatterns: ['dist/', 'node_modules/', 'coverage/'],
 };
