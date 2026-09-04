@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import User from '../src/models/user.model';
 import { clearTestDb, closeTestDb, connectTestDb } from './helpers/db';
 import { CREDENTIALS } from './helpers/factories';
@@ -9,7 +9,7 @@ afterEach(clearTestDb);
 afterAll(closeTestDb);
 
 const post = (path: string, body?: object) =>
-  request(app).post(path).send(body);
+  request(testServer()).post(path).send(body);
 
 describe('validation envelope', () => {
   it('reports every offending field at once, not just the first', async () => {
@@ -101,7 +101,7 @@ describe('other endpoint validation', () => {
   });
 
   it('validates route params', async () => {
-    const res = await request(app).delete(
+    const res = await request(testServer()).delete(
       '/api/auth/sessions/not-an-object-id',
     );
     // auth runs first, so an unauthenticated call is 401 regardless of the id
@@ -111,7 +111,7 @@ describe('other endpoint validation', () => {
 
 describe('malformed transport', () => {
   it('returns 400 invalid_json for a body that is not JSON', async () => {
-    const res = await request(app)
+    const res = await request(testServer())
       .post('/api/auth/login')
       .set('Content-Type', 'application/json')
       .send('{"email":');
@@ -121,7 +121,7 @@ describe('malformed transport', () => {
   });
 
   it('returns 413 for a body over the size cap', async () => {
-    const res = await request(app)
+    const res = await request(testServer())
       .post('/api/auth/login')
       .set('Content-Type', 'application/json')
       .send(
@@ -135,7 +135,7 @@ describe('malformed transport', () => {
 
 describe('unmatched routes', () => {
   it('returns a structured 404', async () => {
-    const res = await request(app).get('/api/does-not-exist');
+    const res = await request(testServer()).get('/api/does-not-exist');
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('route_not_found');
   });

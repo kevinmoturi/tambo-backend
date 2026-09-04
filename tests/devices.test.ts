@@ -1,6 +1,6 @@
 import express from 'express';
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import Device from '../src/models/device.model';
 import {
   deviceContext,
@@ -23,7 +23,7 @@ const DEVICE = {
 };
 
 const enrol = async (accessToken: string, overrides: object = {}) =>
-  request(app)
+  request(testServer())
     .post('/api/v1/devices')
     .set('Authorization', `Bearer ${accessToken}`)
     .send({ ...DEVICE, ...overrides });
@@ -44,7 +44,7 @@ describe('POST /api/v1/devices', () => {
     // the token never appears again: not on the device object, not on any read
     expect(res.body.device.ingestTokenHash).toBeUndefined();
 
-    const readBack = await request(app)
+    const readBack = await request(testServer())
       .get(`/api/v1/devices/${res.body.device._id}`)
       .set('Authorization', `Bearer ${accessToken}`);
     expect(JSON.stringify(readBack.body)).not.toContain(res.body.ingestToken);
@@ -52,7 +52,9 @@ describe('POST /api/v1/devices', () => {
   });
 
   it('requires authentication', async () => {
-    const res = await request(app).post('/api/v1/devices').send(DEVICE);
+    const res = await request(testServer())
+      .post('/api/v1/devices')
+      .send(DEVICE);
     expect(res.status).toBe(401);
   });
 
@@ -76,7 +78,7 @@ describe('device management', () => {
     await enrol(owner.accessToken);
     await enrol(other.accessToken, { name: 'Grace phone' });
 
-    const res = await request(app)
+    const res = await request(testServer())
       .get('/api/v1/devices')
       .set('Authorization', `Bearer ${owner.accessToken}`);
 
@@ -90,7 +92,7 @@ describe('device management', () => {
     const attacker = await registerUser({ email: 'mallory@tambo.app' });
     const { body } = await enrol(owner.accessToken);
 
-    const res = await request(app)
+    const res = await request(testServer())
       .get(`/api/v1/devices/${body.device._id}`)
       .set('Authorization', `Bearer ${attacker.accessToken}`);
 
@@ -102,7 +104,7 @@ describe('device management', () => {
     const { accessToken } = await registerUser();
     const { body } = await enrol(accessToken);
 
-    const res = await request(app)
+    const res = await request(testServer())
       .patch(`/api/v1/devices/${body.device._id}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ colour: 'blue', purchaseInfo: 'Safaricom shop, KES 14,000' });
@@ -115,7 +117,7 @@ describe('device management', () => {
     const { accessToken } = await registerUser();
     const { body } = await enrol(accessToken);
 
-    const res = await request(app)
+    const res = await request(testServer())
       .patch(`/api/v1/devices/${body.device._id}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({});
@@ -127,22 +129,22 @@ describe('device management', () => {
     const { body } = await enrol(accessToken);
     const id = body.device._id;
 
-    await request(app)
+    await request(testServer())
       .post(`/api/v1/devices/${id}/mark-stolen`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({});
 
-    const blocked = await request(app)
+    const blocked = await request(testServer())
       .delete(`/api/v1/devices/${id}`)
       .set('Authorization', `Bearer ${accessToken}`);
     expect(blocked.status).toBe(409);
     expect(blocked.body.code).toBe('episode_open');
 
-    await request(app)
+    await request(testServer())
       .post(`/api/v1/devices/${id}/mark-recovered`)
       .set('Authorization', `Bearer ${accessToken}`);
 
-    const removed = await request(app)
+    const removed = await request(testServer())
       .delete(`/api/v1/devices/${id}`)
       .set('Authorization', `Bearer ${accessToken}`);
     expect(removed.status).toBe(204);
@@ -181,7 +183,7 @@ describe('ingest token lifecycle', () => {
     const { accessToken } = await registerUser();
     const { body } = await enrol(accessToken);
 
-    const rotated = await request(app)
+    const rotated = await request(testServer())
       .post(`/api/v1/devices/${body.device._id}/token`)
       .set('Authorization', `Bearer ${accessToken}`);
     expect(rotated.status).toBe(200);
@@ -194,7 +196,7 @@ describe('ingest token lifecycle', () => {
     const { accessToken } = await registerUser();
     const { body } = await enrol(accessToken);
 
-    const revoked = await request(app)
+    const revoked = await request(testServer())
       .delete(`/api/v1/devices/${body.device._id}/token`)
       .set('Authorization', `Bearer ${accessToken}`);
     expect(revoked.status).toBe(204);
@@ -206,7 +208,7 @@ describe('ingest token lifecycle', () => {
     const { accessToken } = await registerUser();
     const { body } = await enrol(accessToken);
 
-    const res = await request(app)
+    const res = await request(testServer())
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${body.ingestToken}`);
     expect(res.status).toBe(401);

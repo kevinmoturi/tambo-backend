@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import TheftEpisode from '../src/models/theftEpisode.model';
 import { clearTestDb, closeTestDb, connectTestDb } from './helpers/db';
 import { registerUser } from './helpers/factories';
@@ -9,7 +9,7 @@ afterEach(clearTestDb);
 afterAll(closeTestDb);
 
 const enrol = async (accessToken: string) => {
-  const res = await request(app)
+  const res = await request(testServer())
     .post('/api/v1/devices')
     .set('Authorization', `Bearer ${accessToken}`)
     .send({
@@ -22,13 +22,13 @@ const enrol = async (accessToken: string) => {
 };
 
 const markStolen = (accessToken: string, deviceId: string, note?: string) =>
-  request(app)
+  request(testServer())
     .post(`/api/v1/devices/${deviceId}/mark-stolen`)
     .set('Authorization', `Bearer ${accessToken}`)
     .send(note ? { note } : {});
 
 const getDevice = (accessToken: string, deviceId: string) =>
-  request(app)
+  request(testServer())
     .get(`/api/v1/devices/${deviceId}`)
     .set('Authorization', `Bearer ${accessToken}`);
 
@@ -87,7 +87,7 @@ describe('mark-recovered', () => {
     const deviceId = await enrol(accessToken);
     await markStolen(accessToken, deviceId);
 
-    const res = await request(app)
+    const res = await request(testServer())
       .post(`/api/v1/devices/${deviceId}/mark-recovered`)
       .set('Authorization', `Bearer ${accessToken}`);
 
@@ -106,7 +106,7 @@ describe('mark-recovered', () => {
     const { accessToken } = await registerUser();
     const deviceId = await enrol(accessToken);
 
-    const res = await request(app)
+    const res = await request(testServer())
       .post(`/api/v1/devices/${deviceId}/mark-recovered`)
       .set('Authorization', `Bearer ${accessToken}`);
 
@@ -119,7 +119,7 @@ describe('mark-recovered', () => {
     const deviceId = await enrol(accessToken);
 
     const first = await markStolen(accessToken, deviceId);
-    await request(app)
+    await request(testServer())
       .post(`/api/v1/devices/${deviceId}/mark-recovered`)
       .set('Authorization', `Bearer ${accessToken}`);
     const second = await markStolen(accessToken, deviceId);
@@ -138,12 +138,12 @@ describe('episode reads', () => {
     await markStolen(accessToken, deviceA);
     await markStolen(accessToken, deviceB);
 
-    const all = await request(app)
+    const all = await request(testServer())
       .get('/api/v1/episodes')
       .set('Authorization', `Bearer ${accessToken}`);
     expect(all.body.episodes).toHaveLength(2);
 
-    const filtered = await request(app)
+    const filtered = await request(testServer())
       .get(`/api/v1/episodes?deviceId=${deviceA}`)
       .set('Authorization', `Bearer ${accessToken}`);
     expect(filtered.body.episodes).toHaveLength(1);
@@ -156,7 +156,7 @@ describe('episode reads', () => {
     const deviceId = await enrol(owner.accessToken);
     const { body } = await markStolen(owner.accessToken, deviceId);
 
-    const res = await request(app)
+    const res = await request(testServer())
       .get(`/api/v1/episodes/${body.episode._id}`)
       .set('Authorization', `Bearer ${attacker.accessToken}`);
 

@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import config from '../src/config/config';
 import TrustedContact from '../src/models/trustedContact.model';
 import { noopMailer } from '../src/services/mailer/noop.mailer';
@@ -20,7 +20,7 @@ const CONTACT = {
 };
 
 const nominate = (accessToken: string, overrides: object = {}) =>
-  request(app)
+  request(testServer())
     .post('/api/v1/trusted-contacts')
     .set('Authorization', `Bearer ${accessToken}`)
     .send({ ...CONTACT, ...overrides });
@@ -35,7 +35,7 @@ const consentTokenFromMail = (): string => {
 };
 
 const respond = (token: string, action: string) =>
-  request(app).get(`/api/v1/consent/${token}/${action}`);
+  request(testServer()).get(`/api/v1/consent/${token}/${action}`);
 
 describe('nomination', () => {
   it('creates the contact pending and emails THEM the choice', async () => {
@@ -91,17 +91,17 @@ describe('nomination', () => {
     const other = await registerUser({ email: 'zuri@tambo.app' });
     const { body } = await nominate(owner.accessToken);
 
-    const otherList = await request(app)
+    const otherList = await request(testServer())
       .get('/api/v1/trusted-contacts')
       .set('Authorization', `Bearer ${other.accessToken}`);
     expect(otherList.body.contacts).toHaveLength(0);
 
-    const foreignDelete = await request(app)
+    const foreignDelete = await request(testServer())
       .delete(`/api/v1/trusted-contacts/${body.contact._id}`)
       .set('Authorization', `Bearer ${other.accessToken}`);
     expect(foreignDelete.status).toBe(404);
 
-    const ownDelete = await request(app)
+    const ownDelete = await request(testServer())
       .delete(`/api/v1/trusted-contacts/${body.contact._id}`)
       .set('Authorization', `Bearer ${owner.accessToken}`);
     expect(ownDelete.status).toBe(204);
@@ -182,7 +182,7 @@ describe('consent response (public)', () => {
 
 describe('re-sending a nomination', () => {
   const resend = (accessToken: string, id: string) =>
-    request(app)
+    request(testServer())
       .post(`/api/v1/trusted-contacts/${id}/resend`)
       .set('Authorization', `Bearer ${accessToken}`);
 

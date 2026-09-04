@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import RefreshToken from '../src/models/refreshToken.model';
 import { clearTestDb, closeTestDb, connectTestDb } from './helpers/db';
 import { loginUser, registerUser } from './helpers/factories';
@@ -9,7 +9,7 @@ afterEach(clearTestDb);
 afterAll(closeTestDb);
 
 const refreshWith = (refreshToken: string) =>
-  request(app).post('/api/auth/refresh').send({ refreshToken });
+  request(testServer()).post('/api/auth/refresh').send({ refreshToken });
 
 describe('POST /api/auth/refresh', () => {
   it('rotates the token and the replacement works', async () => {
@@ -19,7 +19,7 @@ describe('POST /api/auth/refresh', () => {
     expect(res.status).toBe(200);
     expect(res.body.tokens.refreshToken).not.toBe(refreshToken);
 
-    const me = await request(app)
+    const me = await request(testServer())
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${res.body.tokens.accessToken}`);
     expect(me.status).toBe(200);
@@ -105,7 +105,7 @@ describe('logout', () => {
   it('revokes the presented token only', async () => {
     const { refreshToken } = await registerUser();
 
-    const out = await request(app)
+    const out = await request(testServer())
       .post('/api/auth/logout')
       .send({ refreshToken });
     expect(out.status).toBe(204);
@@ -114,7 +114,7 @@ describe('logout', () => {
   });
 
   it('is idempotent for an unknown token', async () => {
-    const res = await request(app)
+    const res = await request(testServer())
       .post('/api/auth/logout')
       .send({ refreshToken: 'nonexistent' });
     expect(res.status).toBe(204);
@@ -124,7 +124,7 @@ describe('logout', () => {
     const { accessToken } = await registerUser();
     const second = await loginUser();
 
-    const out = await request(app)
+    const out = await request(testServer())
       .post('/api/auth/logout-all')
       .set('Authorization', `Bearer ${accessToken}`);
     expect(out.status).toBe(204);
@@ -138,7 +138,7 @@ describe('session management', () => {
     const first = await registerUser();
     await loginUser();
 
-    const res = await request(app)
+    const res = await request(testServer())
       .get('/api/auth/sessions')
       .set('Authorization', `Bearer ${first.accessToken}`)
       .set('X-Refresh-Token', first.refreshToken);
@@ -154,7 +154,7 @@ describe('session management', () => {
     const first = await registerUser();
     const second = await loginUser();
 
-    const list = await request(app)
+    const list = await request(testServer())
       .get('/api/auth/sessions')
       .set('Authorization', `Bearer ${first.accessToken}`)
       .set('X-Refresh-Token', first.refreshToken);
@@ -163,7 +163,7 @@ describe('session management', () => {
       (s: { current: boolean }) => !s.current,
     );
 
-    const res = await request(app)
+    const res = await request(testServer())
       .delete(`/api/auth/sessions/${other.id}`)
       .set('Authorization', `Bearer ${first.accessToken}`);
     expect(res.status).toBe(204);
@@ -176,11 +176,11 @@ describe('session management', () => {
     const victim = await registerUser();
     const attacker = await registerUser({ email: 'mallory@tambo.app' });
 
-    const list = await request(app)
+    const list = await request(testServer())
       .get('/api/auth/sessions')
       .set('Authorization', `Bearer ${victim.accessToken}`);
 
-    const res = await request(app)
+    const res = await request(testServer())
       .delete(`/api/auth/sessions/${list.body.sessions[0].id}`)
       .set('Authorization', `Bearer ${attacker.accessToken}`);
 

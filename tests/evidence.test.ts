@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import config from '../src/config/config';
 import EvidenceEnvelope from '../src/models/evidenceEnvelope.model';
 import TheftEpisode from '../src/models/theftEpisode.model';
@@ -23,7 +23,7 @@ interface Enrolled {
 
 const enrol = async (threshold = 3): Promise<Enrolled> => {
   const { accessToken } = await registerUser();
-  const res = await request(app)
+  const res = await request(testServer())
     .post('/api/v1/devices')
     .set('Authorization', `Bearer ${accessToken}`)
     .send({
@@ -57,13 +57,13 @@ const envelope = (
 };
 
 const ingest = (token: string, envelopes: object[]) =>
-  request(app)
+  request(testServer())
     .post('/api/v1/evidence')
     .set('X-Device-Token', token)
     .send({ envelopes });
 
 const markStolen = (accessToken: string, deviceId: string) =>
-  request(app)
+  request(testServer())
     .post(`/api/v1/devices/${deviceId}/mark-stolen`)
     .set('Authorization', `Bearer ${accessToken}`)
     .send({});
@@ -95,13 +95,13 @@ describe('POST /api/v1/evidence', () => {
     const { accessToken } = await enrol();
     expect(
       (
-        await request(app)
+        await request(testServer())
           .post('/api/v1/evidence')
           .send({ envelopes: [envelope()] })
       ).status,
     ).toBe(401);
 
-    const asUser = await request(app)
+    const asUser = await request(testServer())
       .post('/api/v1/evidence')
       .set('X-Device-Token', accessToken)
       .send({ envelopes: [envelope()] });
@@ -146,7 +146,7 @@ describe('POST /api/v1/evidence', () => {
 
     // a second user's device tries to reuse the id
     const { accessToken } = await registerUser({ email: 'zuri@tambo.app' });
-    const other = await request(app)
+    const other = await request(testServer())
       .post('/api/v1/devices')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
@@ -254,7 +254,7 @@ describe('media upload', () => {
     content: Buffer,
     hash?: string,
   ) =>
-    request(app)
+    request(testServer())
       .post(`/api/v1/evidence/${envelopeId}/media`)
       .set('X-Device-Token', token)
       .set('X-Content-Sha256', hash ?? sha256Hex(content))
@@ -322,7 +322,7 @@ describe('media upload', () => {
     expect(wrongType.status).toBe(400);
     expect(wrongType.body.code).toBe('not_photo_envelope');
 
-    const noHash = await request(app)
+    const noHash = await request(testServer())
       .post(`/api/v1/evidence/${photo.id}/media`)
       .set('X-Device-Token', ingestToken)
       .set('Content-Type', 'image/jpeg')
@@ -336,7 +336,7 @@ describe('media upload', () => {
     const env = await photoEnvelope(first.ingestToken);
 
     const { accessToken } = await registerUser({ email: 'zuri@tambo.app' });
-    const other = await request(app)
+    const other = await request(testServer())
       .post('/api/v1/devices')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
@@ -360,7 +360,7 @@ describe('retention', () => {
 
     for (const env of [expired, live]) {
       const content = crypto.randomBytes(256);
-      await request(app)
+      await request(testServer())
         .post(`/api/v1/evidence/${env.id}/media`)
         .set('X-Device-Token', ingestToken)
         .set('X-Content-Sha256', sha256Hex(content))

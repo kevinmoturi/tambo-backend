@@ -4,6 +4,7 @@ module.exports = {
   // produces transport-level flakes under peak load; 2 is the sweet spot
   maxWorkers: 2,
   setupFiles: ['<rootDir>/tests/setup/env.ts'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup/testServer.ts'],
   globalSetup: '<rootDir>/tests/setup/globalSetup.ts',
   globalTeardown: '<rootDir>/tests/setup/globalTeardown.ts',
   moduleFileExtensions: ['ts', 'js'],

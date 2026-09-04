@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import config from '../src/config/config';
 import OtpChallenge from '../src/models/otpChallenge.model';
 import User from '../src/models/user.model';
@@ -138,7 +138,7 @@ describe('code verification', () => {
 
 describe('POST /api/auth/otp/resend', () => {
   const resend = (challengeId: string) =>
-    request(app).post('/api/auth/otp/resend').send({ challengeId });
+    request(testServer()).post('/api/auth/otp/resend').send({ challengeId });
 
   it('enforces the cooldown with a Retry-After', async () => {
     const res = await startRegister();
@@ -186,7 +186,7 @@ describe('POST /api/auth/change-email', () => {
   const NEW_EMAIL = 'ada.new@tambo.app';
 
   const requestChange = async (accessToken: string, newEmail = NEW_EMAIL) =>
-    request(app)
+    request(testServer())
       .post('/api/auth/change-email')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ newEmail, password: CREDENTIALS.password });
@@ -212,8 +212,11 @@ describe('POST /api/auth/change-email', () => {
 
     // identifier changed: old sessions are gone, new pair works, old email can't log in
     expect(
-      (await request(app).post('/api/auth/refresh').send({ refreshToken }))
-        .status,
+      (
+        await request(testServer())
+          .post('/api/auth/refresh')
+          .send({ refreshToken })
+      ).status,
     ).toBe(401);
     expect((await startLogin(NEW_EMAIL)).status).toBe(200);
     expect((await startLogin(EMAIL)).status).toBe(401);
@@ -223,7 +226,7 @@ describe('POST /api/auth/change-email', () => {
     const { accessToken } = await registerUser();
     await registerUser({ email: NEW_EMAIL });
 
-    const wrongPassword = await request(app)
+    const wrongPassword = await request(testServer())
       .post('/api/auth/change-email')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ newEmail: 'fresh@tambo.app', password: 'not-my-password' });

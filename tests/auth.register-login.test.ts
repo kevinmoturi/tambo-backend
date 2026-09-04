@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import User from '../src/models/user.model';
 import { clearTestDb, closeTestDb, connectTestDb } from './helpers/db';
 import {
@@ -45,7 +45,7 @@ describe('POST /api/auth/register', () => {
     expect(verified.body.user.emailVerifiedAt).toBeTruthy();
     expect(typeof verified.body.tokens.accessToken).toBe('string');
 
-    const me = await request(app)
+    const me = await request(testServer())
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${verified.body.tokens.accessToken}`);
     expect(me.status).toBe(200);
@@ -110,7 +110,7 @@ describe('POST /api/auth/login', () => {
     await registerUser();
     const { accessToken } = await loginUser();
 
-    const me = await request(app)
+    const me = await request(testServer())
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${accessToken}`);
     expect(me.status).toBe(200);
@@ -138,11 +138,11 @@ describe('POST /api/auth/login', () => {
 
     expect(second.refreshToken).not.toBe(first.refreshToken);
 
-    await request(app)
+    await request(testServer())
       .post('/api/auth/logout')
       .send({ refreshToken: first.refreshToken });
 
-    const stillValid = await request(app)
+    const stillValid = await request(testServer())
       .post('/api/auth/refresh')
       .send({ refreshToken: second.refreshToken });
     expect(stillValid.status).toBe(200);
@@ -165,7 +165,7 @@ describe('POST /api/auth/login', () => {
 describe('GET /api/auth/me', () => {
   it('returns the caller', async () => {
     const { accessToken } = await registerUser();
-    const res = await request(app)
+    const res = await request(testServer())
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${accessToken}`);
 
@@ -178,7 +178,7 @@ describe('GET /api/auth/me', () => {
     ['wrong scheme', 'Token abc', 'missing_token'],
     ['garbage token', 'Bearer not-a-jwt', 'invalid_token'],
   ])('rejects %s', async (_label, header, code) => {
-    const req = request(app).get('/api/auth/me');
+    const req = request(testServer()).get('/api/auth/me');
     if (header) req.set('Authorization', header);
     const res = await req;
 

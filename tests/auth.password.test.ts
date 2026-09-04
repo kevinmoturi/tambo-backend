@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import PasswordResetToken from '../src/models/passwordResetToken.model';
 import { noopMailer } from '../src/services/mailer/noop.mailer';
 import { clearTestDb, closeTestDb, connectTestDb } from './helpers/db';
@@ -35,7 +35,7 @@ const requestChange = (
   accessToken: string,
   currentPassword = CREDENTIALS.password,
 ) =>
-  request(app)
+  request(testServer())
     .post('/api/auth/change-password')
     .set('Authorization', `Bearer ${accessToken}`)
     .send({ currentPassword, newPassword: NEW_PASSWORD });
@@ -52,8 +52,11 @@ describe('POST /api/auth/change-password (OTP-confirmed)', () => {
     // pending only: old password still logs in, old session still refreshes
     expect((await startLogin()).status).toBe(200);
     expect(
-      (await request(app).post('/api/auth/refresh').send({ refreshToken }))
-        .status,
+      (
+        await request(testServer())
+          .post('/api/auth/refresh')
+          .send({ refreshToken })
+      ).status,
     ).toBe(200);
   });
 
@@ -74,7 +77,7 @@ describe('POST /api/auth/change-password (OTP-confirmed)', () => {
     for (const dead of [refreshToken, otherSession.refreshToken]) {
       expect(
         (
-          await request(app)
+          await request(testServer())
             .post('/api/auth/refresh')
             .send({ refreshToken: dead })
         ).status,
@@ -84,7 +87,7 @@ describe('POST /api/auth/change-password (OTP-confirmed)', () => {
     // the fresh pair works; new password logs in; old one does not
     expect(
       (
-        await request(app).post('/api/auth/refresh').send({
+        await request(testServer()).post('/api/auth/refresh').send({
           refreshToken: verified.body.tokens.refreshToken,
         })
       ).status,
@@ -109,22 +112,26 @@ describe('POST /api/auth/change-password (OTP-confirmed)', () => {
   });
 
   it('requires authentication', async () => {
-    const res = await request(app).post('/api/auth/change-password').send({
-      currentPassword: CREDENTIALS.password,
-      newPassword: NEW_PASSWORD,
-    });
+    const res = await request(testServer())
+      .post('/api/auth/change-password')
+      .send({
+        currentPassword: CREDENTIALS.password,
+        newPassword: NEW_PASSWORD,
+      });
     expect(res.status).toBe(401);
   });
 
   it('invalidates outstanding reset links when the change is verified', async () => {
     const { accessToken } = await registerUser();
-    await request(app).post('/api/auth/forgot-password').send({ email: EMAIL });
+    await request(testServer())
+      .post('/api/auth/forgot-password')
+      .send({ email: EMAIL });
     const preChangeToken = tokenFromMail();
 
     const res = await requestChange(accessToken);
     await verifyOtp(res.body.challenge.challengeId, latestOtpCode());
 
-    const hijack = await request(app)
+    const hijack = await request(testServer())
       .post('/api/auth/reset-password')
       .send({ token: preChangeToken, password: 'attacker-password' });
 
@@ -138,7 +145,7 @@ describe('POST /api/auth/forgot-password', () => {
   it('sends a reset mail for a known address', async () => {
     await registerUser();
     noopMailer.clear();
-    const res = await request(app)
+    const res = await request(testServer())
       .post('/api/auth/forgot-password')
       .send({ email: EMAIL });
 
@@ -150,11 +157,11 @@ describe('POST /api/auth/forgot-password', () => {
   it('is indistinguishable for an unknown address', async () => {
     await registerUser();
 
-    const hit = await request(app)
+    const hit = await request(testServer())
       .post('/api/auth/forgot-password')
       .send({ email: EMAIL });
     noopMailer.clear();
-    const miss = await request(app)
+    const miss = await request(testServer())
       .post('/api/auth/forgot-password')
       .send({ email: 'nobody@tambo.app' });
 
@@ -165,19 +172,23 @@ describe('POST /api/auth/forgot-password', () => {
 
   it('invalidates a previously issued token when a new one is requested', async () => {
     await registerUser();
-    await request(app).post('/api/auth/forgot-password').send({ email: EMAIL });
+    await request(testServer())
+      .post('/api/auth/forgot-password')
+      .send({ email: EMAIL });
     const firstToken = tokenFromMail();
 
-    await request(app).post('/api/auth/forgot-password').send({ email: EMAIL });
+    await request(testServer())
+      .post('/api/auth/forgot-password')
+      .send({ email: EMAIL });
     const secondToken = tokenFromMail();
     expect(secondToken).not.toBe(firstToken);
 
-    const stale = await request(app)
+    const stale = await request(testServer())
       .post('/api/auth/reset-password')
       .send({ token: firstToken, password: NEW_PASSWORD });
     expect(stale.status).toBe(401);
 
-    const fresh = await request(app)
+    const fresh = await request(testServer())
       .post('/api/auth/reset-password')
       .send({ token: secondToken, password: NEW_PASSWORD });
     expect(fresh.status).toBe(200);
@@ -185,7 +196,9 @@ describe('POST /api/auth/forgot-password', () => {
 
   it('stores only a hash of the reset token', async () => {
     await registerUser();
-    await request(app).post('/api/auth/forgot-password').send({ email: EMAIL });
+    await request(testServer())
+      .post('/api/auth/forgot-password')
+      .send({ email: EMAIL });
     const token = tokenFromMail();
 
     const stored = await PasswordResetToken.findOne({});
@@ -197,7 +210,9 @@ describe('POST /api/auth/forgot-password', () => {
 
 describe('POST /api/auth/reset-password', () => {
   const requestReset = async (): Promise<string> => {
-    await request(app).post('/api/auth/forgot-password').send({ email: EMAIL });
+    await request(testServer())
+      .post('/api/auth/forgot-password')
+      .send({ email: EMAIL });
     return tokenFromMail();
   };
 
@@ -205,7 +220,7 @@ describe('POST /api/auth/reset-password', () => {
     const { refreshToken } = await registerUser();
     const token = await requestReset();
 
-    const res = await request(app)
+    const res = await request(testServer())
       .post('/api/auth/reset-password')
       .send({ token, password: NEW_PASSWORD });
 
@@ -213,8 +228,11 @@ describe('POST /api/auth/reset-password', () => {
     expect((await startLogin(EMAIL, NEW_PASSWORD)).status).toBe(200);
     expect((await startLogin(EMAIL, CREDENTIALS.password)).status).toBe(401);
     expect(
-      (await request(app).post('/api/auth/refresh').send({ refreshToken }))
-        .status,
+      (
+        await request(testServer())
+          .post('/api/auth/refresh')
+          .send({ refreshToken })
+      ).status,
     ).toBe(401);
   });
 
@@ -223,10 +241,10 @@ describe('POST /api/auth/reset-password', () => {
     const token = await requestReset();
 
     const results = await Promise.all([
-      request(app)
+      request(testServer())
         .post('/api/auth/reset-password')
         .send({ token, password: NEW_PASSWORD }),
-      request(app)
+      request(testServer())
         .post('/api/auth/reset-password')
         .send({ token, password: 'other-password' }),
     ]);
@@ -243,7 +261,7 @@ describe('POST /api/auth/reset-password', () => {
       { $set: { expiresAt: new Date(Date.now() - 1000) } },
     );
 
-    const res = await request(app)
+    const res = await request(testServer())
       .post('/api/auth/reset-password')
       .send({ token, password: NEW_PASSWORD });
     expect(res.status).toBe(401);
@@ -252,7 +270,7 @@ describe('POST /api/auth/reset-password', () => {
 
   it('rejects a forged token', async () => {
     await registerUser();
-    const res = await request(app)
+    const res = await request(testServer())
       .post('/api/auth/reset-password')
       .send({ token: 'a'.repeat(96), password: NEW_PASSWORD });
     expect(res.status).toBe(401);

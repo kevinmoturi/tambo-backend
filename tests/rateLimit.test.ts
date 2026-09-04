@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import config from '../src/config/config';
 import { rateLimits } from '../src/config/rateLimits';
 import RateLimit from '../src/models/rateLimit.model';
@@ -30,7 +30,7 @@ afterEach(async () => {
 afterAll(closeTestDb);
 
 const attemptLogin = (password: string, email = EMAIL) =>
-  request(app).post('/api/auth/login').send({ email, password });
+  request(testServer()).post('/api/auth/login').send({ email, password });
 
 describe('login rate limiting', () => {
   it('blocks once the budget is spent and reports Retry-After', async () => {
@@ -126,12 +126,12 @@ describe('forgot-password rate limiting', () => {
 
     expect(
       (
-        await request(app)
+        await request(testServer())
           .post('/api/auth/forgot-password')
           .send({ email: EMAIL })
       ).status,
     ).toBe(204);
-    const blocked = await request(app)
+    const blocked = await request(testServer())
       .post('/api/auth/forgot-password')
       .send({ email: EMAIL });
 

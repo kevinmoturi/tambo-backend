@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from '../src/app';
+import { testServer } from './setup/testServer';
 import { closeTestDb, connectTestDb } from './helpers/db';
 
 /**
@@ -8,7 +8,7 @@ import { closeTestDb, connectTestDb } from './helpers/db';
  */
 describe('GET /api/health', () => {
   it('reports 503 while the database is not connected', async () => {
-    const res = await request(app).get('/api/health');
+    const res = await request(testServer()).get('/api/health');
 
     expect(res.status).toBe(503);
     expect(res.body.status).toBe('degraded');
@@ -17,7 +17,7 @@ describe('GET /api/health', () => {
 
   it('reports 200 once connected', async () => {
     await connectTestDb();
-    const res = await request(app).get('/api/health');
+    const res = await request(testServer()).get('/api/health');
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ status: 'ok', database: 'connected' });

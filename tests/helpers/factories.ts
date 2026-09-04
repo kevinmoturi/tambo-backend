@@ -1,6 +1,7 @@
 import request from 'supertest';
-import app from '../../src/app';
+import { testServer } from '../setup/testServer';
 import { noopMailer } from '../../src/services/mailer/noop.mailer';
+import { retryPhantom } from './http';
 
 export const CREDENTIALS = {
   name: 'Ada Lovelace',
@@ -27,11 +28,13 @@ export const latestOtpCode = (): string => {
 };
 
 export const verifyOtp = (challengeId: string, code: string) =>
-  request(app).post('/api/auth/otp/verify').send({ challengeId, code });
+  request(testServer())
+    .post('/api/auth/otp/verify')
+    .send({ challengeId, code });
 
 /** Registration step 1 only: returns the raw challenge response. */
 export const startRegister = (overrides: Partial<typeof CREDENTIALS> = {}) =>
-  request(app)
+  request(testServer())
     .post('/api/auth/register')
     .send({ ...CREDENTIALS, ...overrides });
 
@@ -39,26 +42,28 @@ export const startRegister = (overrides: Partial<typeof CREDENTIALS> = {}) =>
 export const startLogin = (
   email = CREDENTIALS.email,
   password = CREDENTIALS.password,
-) => request(app).post('/api/auth/login').send({ email, password });
+) => request(testServer()).post('/api/auth/login').send({ email, password });
 
 /** Full signup: register, then complete the emailed OTP. Returns a live session. */
 export const registerUser = async (
   overrides: Partial<typeof CREDENTIALS> = {},
 ): Promise<Registered> => {
-  const res = await startRegister(overrides);
+  const res = await retryPhantom(() => startRegister(overrides), 'register');
   if (res.status !== 201) {
     throw new Error(
       `registerUser failed: ${res.status} ${JSON.stringify(res.body)}`,
     );
   }
 
-  const verified = await verifyOtp(
-    res.body.challenge.challengeId,
-    latestOtpCode(),
+  const verified = await retryPhantom(
+    () => verifyOtp(res.body.challenge.challengeId, latestOtpCode()),
+    'register-otp-verify',
   );
   if (verified.status !== 200) {
     throw new Error(
-      `registerUser OTP failed: ${verified.status} ${JSON.stringify(verified.body)}`,
+      `registerUser OTP failed: ${verified.status} body=${JSON.stringify(verified.body)} ` +
+        `text=${JSON.stringify(verified.text?.slice(0, 300))} ` +
+        `content-type=${verified.headers['content-type'] ?? 'none'}`,
     );
   }
 
@@ -74,16 +79,16 @@ export const loginUser = async (
   email = CREDENTIALS.email,
   password = CREDENTIALS.password,
 ): Promise<Registered> => {
-  const res = await startLogin(email, password);
+  const res = await retryPhantom(() => startLogin(email, password), 'login');
   if (res.status !== 200) {
     throw new Error(
       `loginUser failed: ${res.status} ${JSON.stringify(res.body)}`,
     );
   }
 
-  const verified = await verifyOtp(
-    res.body.challenge.challengeId,
-    latestOtpCode(),
+  const verified = await retryPhantom(
+    () => verifyOtp(res.body.challenge.challengeId, latestOtpCode()),
+    'login-otp-verify',
   );
   if (verified.status !== 200) {
     throw new Error(
