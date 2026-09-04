@@ -10,30 +10,51 @@ Authenticated endpoints expect:
 Authorization: Bearer <accessToken>
 ```
 
-## Token pair
+## The OTP model
 
-Every successful credential exchange returns:
+Every authentication-changing action is completed by a 6-digit code emailed to
+the relevant mailbox. Endpoints that *start* such an action return a
+**challenge** instead of tokens:
+
+```json
+{ "challenge": { "challengeId": "665f...", "purpose": "login", "expiresInMinutes": 10 } }
+```
+
+The client then collects the code from the user and calls `POST /otp/verify`,
+which returns the **token pair**:
 
 ```json
 {
-  "user": { "_id": "...", "name": "Ada Lovelace", "email": "ada@tambo.app", "role": "user", "createdAt": "...", "updatedAt": "..." },
+  "user": { "_id": "...", "name": "Ada Lovelace", "email": "ada@tambo.app", "role": "user", "emailVerifiedAt": "...", "createdAt": "...", "updatedAt": "..." },
   "tokens": { "accessToken": "eyJ...", "refreshToken": "9f3c...", "expiresIn": "15m" }
 }
 ```
 
-`passwordHash` is never serialized.
+`passwordHash` is never serialized. Codes expire after 10 minutes, allow 5
+wrong guesses, and are single-use. A new challenge for the same purpose kills
+the previous one.
+
+```
+register ──┐
+login ─────┤                                  ┌─> tokens (signup/login/
+change-password ──┼──> challenge ──> POST /otp/verify ─┤    password/email applied)
+change-email ─────┘        │                           └─> 401 wrong/expired code
+                           └─> POST /otp/resend (cooldown-limited)
+```
 
 ---
 
 ## POST /register
 
-Creates an account and signs the user in.
+Creates the account (unverified) and opens a `signup` challenge. **No tokens
+yet** — verifying the code proves the mailbox, sets `emailVerifiedAt`, and
+returns the first session.
 
 ```json
 { "name": "Ada Lovelace", "email": "ada@tambo.app", "password": "8+ chars, at most 72 bytes" }
 ```
 
-`201` → token pair.
+`201` → challenge envelope.
 
 | Code | Status | Meaning |
 |---|---|---|
@@ -45,18 +66,58 @@ Unknown keys are stripped, so posting `"role": "admin"` does nothing.
 
 ## POST /login
 
+Password check first; a correct password opens a `login` challenge and emails a
+code. A user who never finished signup verification is healed here — the login
+code proves the mailbox just as well.
+
 ```json
 { "email": "ada@tambo.app", "password": "..." }
 ```
 
-`200` → token pair.
+`200` → challenge envelope.
 
 | Code | Status | Meaning |
 |---|---|---|
 | `invalid_credentials` | 401 | Wrong password **or** unknown email — deliberately indistinguishable |
 | `rate_limited` | 429 | 5 per 15 min per email+IP |
 
-Once the budget is spent, even the *correct* password returns 429.
+## POST /otp/verify
+
+Completes whichever flow opened the challenge.
+
+```json
+{ "challengeId": "665f...", "code": "123456" }
+```
+
+`200` → token pair. Side effects by purpose:
+
+| Purpose | On verify |
+|---|---|
+| `signup`, `login` | `emailVerifiedAt` set if missing; session issued |
+| `password_change` | New password applied; **every other session and reset link revoked**; fresh session issued |
+| `email_change` | Email updated + verified; **every other session and reset link revoked**; fresh session issued |
+
+| Code | Status | Meaning |
+|---|---|---|
+| `invalid_otp` | 401 | Wrong code; the challenge survives (attempts remaining) |
+| `otp_attempts_exceeded` | 401 | 5 wrong guesses; challenge burned — restart the flow |
+| `invalid_challenge` | 401 | Unknown, expired, consumed, or superseded challenge |
+| `email_taken` | 409 | email_change only: the address was claimed while the code was in flight |
+| `rate_limited` | 429 | 15 per 15 min per IP |
+
+## POST /otp/resend
+
+```json
+{ "challengeId": "665f..." }
+```
+
+`204`. Rotates the code (the old one dies) without extending the challenge's
+expiry or attempt budget.
+
+| Code | Status | Meaning |
+|---|---|---|
+| `invalid_challenge` | 401 | Not an active challenge |
+| `rate_limited` | 429 | 60s per-challenge cooldown (`retryAfter` says how long), plus 6 per 10 min per IP |
 
 ## POST /refresh
 
@@ -69,7 +130,7 @@ the replacement and discarding the old one.
 
 | Code | Status | Meaning |
 |---|---|---|
-| `invalid_refresh_token` | 401 | Unknown, expired, or the account is gone |
+| `invalid_refresh_token` | 401 | Unknown, expired, revoked family, or the account is gone |
 | `refresh_token_reused` | 401 | Replay detected — **every session in that family was just revoked.** Send the user to sign-in |
 | `rate_limited` | 429 | 60 per hour per IP |
 
@@ -96,14 +157,13 @@ Revokes only that session.
 ```
 
 `204` **always**, whether or not the account exists — otherwise the endpoint
-becomes an account-existence oracle. Requesting a new link invalidates any
-previous one.
+becomes an account-existence oracle. This flow is link-based rather than
+challenge-based on purpose: returning a `challengeId` would leak which emails
+are registered. Requesting a new link invalidates any previous one.
 
 | Code | Status | Meaning |
 |---|---|---|
 | `rate_limited` | 429 | 3 per hour per email+IP |
-
-In development (`MAIL_DRIVER=console`) the link is printed to the server log.
 
 ## POST /reset-password
 
@@ -121,25 +181,42 @@ In development (`MAIL_DRIVER=console`) the link is printed to the server log.
 
 ---
 
-## GET /me 🔒
-
-`200` → `{ "user": { ... } }`
-
 ## POST /change-password 🔒
 
 ```json
-{ "currentPassword": "...", "newPassword": "min 8 chars" }
+{ "currentPassword": "...", "newPassword": "8+ chars, at most 72 bytes" }
 ```
 
-`200` → a fresh token pair. **Revokes every other session AND every
-outstanding password-reset link**, including the caller's previous session —
-so use the returned pair from here on. A reset link issued before the change
-can never take the account afterwards.
+`200` → `password_change` challenge. **Nothing changes until the code is
+verified** — the new password rides on the challenge. Verifying applies it,
+revokes every existing session and outstanding reset link, and returns a fresh
+pair.
 
 | Code | Status | Meaning |
 |---|---|---|
-| `invalid_credentials` | 401 | `currentPassword` is wrong |
+| `invalid_credentials` | 401 | `currentPassword` is wrong (no challenge opened, no mail sent) |
 | `no_password_credential` | 400 | Account has no password (a future OTP-only account) |
+
+## POST /change-email 🔒
+
+```json
+{ "newEmail": "new@tambo.app", "password": "..." }
+```
+
+`200` → `email_change` challenge. The code is sent to the **new** address —
+possession of the new mailbox is what authorizes the change. Verifying updates
+the email (marked verified), revokes every existing session, and returns a
+fresh pair. The old address can no longer log in.
+
+| Code | Status | Meaning |
+|---|---|---|
+| `invalid_credentials` | 401 | Password is wrong |
+| `email_unchanged` | 400 | Same address as current |
+| `email_taken` | 409 | Address belongs to another account |
+
+## GET /me 🔒
+
+`200` → `{ "user": { ... } }` — includes `emailVerifiedAt`.
 
 ## POST /logout-all 🔒
 
@@ -184,11 +261,11 @@ balancer at this.
 
 | Code | Status |
 |---|---|
-| `validation_error` | 400 |
-| `invalid_json` | 400 |
-| `no_password_credential` | 400 |
+| `validation_error`, `invalid_json` | 400 |
+| `no_password_credential`, `email_unchanged` | 400 |
 | `unauthorized`, `missing_token`, `invalid_token`, `token_expired` | 401 |
 | `invalid_credentials` | 401 |
+| `invalid_otp`, `otp_attempts_exceeded`, `invalid_challenge` | 401 |
 | `invalid_refresh_token`, `refresh_token_reused` | 401 |
 | `invalid_reset_token` | 401 |
 | `forbidden` | 403 |

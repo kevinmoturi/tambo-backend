@@ -52,8 +52,20 @@ race) and the fail-silent config traps (JWT secret fallback, TRUST_PROXY,
 MAIL_DRIVER — all now refuse to boot instead). Prod dependencies audit clean
 (`qs` overridden to a patched version).
 
-**Current state: 83 tests green, lint/typecheck/build clean, verified
-end-to-end against the Atlas cluster. Committed and pushed 2026-09-04.**
+### ✅ Email OTP everywhere + Resend driver (2026-09-05)
+Every authentication-changing action now completes via a 6-digit emailed code:
+signup (verifies the account), every login, password change, email change (code
+goes to the NEW address). Codes bcrypt-hashed, 5 attempts, 10-min TTL, atomic
+single-use, cooldown-limited resend. Register/login return a `challenge`;
+`/otp/verify` returns tokens. Resend mail driver ready behind
+`MAIL_DRIVER=resend` (blocked on domain verification - see docs/cloudflare.md).
+Race-proof bulk revocation added (family tombstones + per-user watermark).
+Deliberate UX choice by the owner: OTP on EVERY login; relaxing to
+new-devices-only later means gating `login`'s createChallenge call on an
+unrecognized userAgent/device id.
+
+**Current state: 105 tests green, lint/typecheck/build clean.
+Committed and pushed 2026-09-05.**
 
 ---
 
@@ -63,10 +75,15 @@ end-to-end against the Atlas cluster. Committed and pushed 2026-09-04.**
 1. ✅ **Commit the work** — committed as a series and pushed (2026-09-04).
 2. ✅ **Rotate the Atlas password** — rotated (2026-09-04); `.env` updated and
    the connection verified.
-3. ⬜ **Provider setup: email AND SMS, decided together** (email:
-   Resend/SES/Postmark + sending domain + SPF/DKIM; SMS: e.g. Africa's
-   Talking/Twilio) — owner will provide later. The long pole before launch;
-   the email-gated batch AND phone OTP both wait on it.
+3. 🔶 **Providers**: email is now Resend (key supplied 2026-09-05, driver
+   built) but **no verified sending domain yet** — real users receive nothing
+   until the DNS records in docs/cloudflare.md are added. SMS provider still
+   undecided; phone OTP waits on it.
+4. ⬜ **Cloudflare**: full operator runbook in docs/cloudflare.md. Needs from
+   the owner: the domain name, DNS access (or a scoped CF API token), and the
+   production API hostname.
+5. 👤 **Rotate the Resend API key** after setup — it was pasted into a chat
+   conversation (same hygiene as the Atlas password was).
 
 ### ⬜ Phone OTP login — designed-for, ON HOLD until providers are settled
 
@@ -109,14 +126,15 @@ deliberately sequenced behind the email provider (owner's call, 2026-09-04):
 real logger with request ids, auth-event audit trail, email verification, the
 real mail driver, account lockout, 2FA, OpenAPI spec, CI pipeline.
 
-### ⬜ Batch gated on the email service (in priority order once it lands)
-1. **Real mail driver** — one file in `src/services/mailer/` + `MAIL_DRIVER`
-   env once the provider account exists.
-2. **Email verification** — `emailVerifiedAt` exists, nothing sets it. Also
-   the mitigation for register-with-someone-else's-email (accepted gap).
+### ⬜ Remaining batch (was email-gated; mail driver + verification now DONE)
+1. ✅ ~~Real mail driver~~ — Resend driver built; domain verification pending.
+2. ✅ ~~Email verification~~ — subsumed by OTP: signup verifies, login heals
+   unverified accounts, email change verifies the new address.
 3. **Observability** — real logger with request ids, auth-event audit trail.
-4. **Account lockout** on top of rate limiting.
-5. **2FA (TOTP).**
+4. **Account lockout** on top of rate limiting (OTP attempt caps already bound
+   code guessing).
+5. **2FA (TOTP)** — lower priority now that every login is already emailed-OTP
+   confirmed.
 6. **OpenAPI spec** generated from the zod schemas → typed mobile client.
 7. **CI pipeline** (typecheck + lint + test; `MONGOMS_VERSION` pin is
    macOS-12-only, Linux runners use the default).

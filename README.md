@@ -39,6 +39,7 @@ curl localhost:3000/api/health
 
 - [docs/architecture.md](docs/architecture.md) — layering, conventions, how a request flows
 - [docs/auth-api.md](docs/auth-api.md) — endpoint reference and error codes
+- [docs/cloudflare.md](docs/cloudflare.md) — operator runbook: Resend DNS, proxying, TRUST_PROXY
 - [docs/security.md](docs/security.md) — the threat model and what defends against what
 - [docs/roadmap.md](docs/roadmap.md) — build plan & status: what is done, what is next, open decisions
 
