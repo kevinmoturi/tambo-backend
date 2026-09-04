@@ -1,11 +1,10 @@
 import express from 'express';
 import request from 'supertest';
-import app from '../src/app';
 import User from '../src/models/user.model';
 import { requireAuth, requireRole } from '../src/middlewares/auth.middleware';
 import { errorHandler } from '../src/middlewares/errorHandler';
 import { clearTestDb, closeTestDb, connectTestDb } from './helpers/db';
-import { registerUser } from './helpers/factories';
+import { loginUser, registerUser } from './helpers/factories';
 
 /**
  * requireRole has no production route yet, so it is exercised against a
@@ -39,10 +38,8 @@ const adminToken = async (): Promise<string> => {
   const { userId } = await registerUser();
   await User.updateOne({ _id: userId }, { $set: { role: 'admin' } });
 
-  const res = await request(app)
-    .post('/api/auth/login')
-    .send({ email: 'ada@tambo.app', password: 'correct-horse-battery' });
-  return res.body.tokens.accessToken;
+  const { accessToken } = await loginUser();
+  return accessToken;
 };
 
 describe('requireRole', () => {

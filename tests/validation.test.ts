@@ -64,8 +64,9 @@ describe('register validation', () => {
     });
 
     expect(res.status).toBe(201);
-    expect(res.body.user.name).toBe('Ada Lovelace');
-    expect(res.body.user.email).toBe('ada@tambo.app');
+    const stored = await User.findOne({});
+    expect(stored?.name).toBe('Ada Lovelace');
+    expect(stored?.email).toBe('ada@tambo.app');
   });
 
   it('strips unknown keys rather than passing them to the model', async () => {
@@ -78,7 +79,7 @@ describe('register validation', () => {
     expect(res.status).toBe(201);
     const stored = await User.findOne({});
     expect(stored?.emailVerifiedAt).toBeUndefined();
-    expect(res.body.user.isAdmin).toBeUndefined();
+    expect(stored?.toObject()).not.toHaveProperty('isAdmin');
   });
 });
 
@@ -89,6 +90,10 @@ describe('other endpoint validation', () => {
     ['/api/auth/logout', {}],
     ['/api/auth/forgot-password', { email: 'bad' }],
     ['/api/auth/reset-password', { token: 'abc' }],
+    ['/api/auth/otp/verify', { challengeId: 'not-hex', code: '123456' }],
+    ['/api/auth/otp/verify', { challengeId: 'a'.repeat(24), code: '12345' }],
+    ['/api/auth/otp/verify', { challengeId: 'a'.repeat(24), code: 'abcdef' }],
+    ['/api/auth/otp/resend', {}],
   ])('rejects a bad body for %s', async (path, body) => {
     const res = await post(path, body);
     expect(res.status).toBe(400);

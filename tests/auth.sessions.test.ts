@@ -2,7 +2,7 @@ import request from 'supertest';
 import app from '../src/app';
 import RefreshToken from '../src/models/refreshToken.model';
 import { clearTestDb, closeTestDb, connectTestDb } from './helpers/db';
-import { login, registerUser } from './helpers/factories';
+import { loginUser, registerUser } from './helpers/factories';
 
 beforeAll(connectTestDb, 120_000);
 afterEach(clearTestDb);
@@ -44,33 +44,42 @@ describe('POST /api/auth/refresh', () => {
 
   it('does not burn OTHER sessions when one family is compromised', async () => {
     const first = await registerUser();
-    const second = await login();
+    const second = await loginUser();
 
     await refreshWith(first.refreshToken);
     await refreshWith(first.refreshToken); // trigger reuse detection
 
-    const other = await refreshWith(second.body.tokens.refreshToken);
+    const other = await refreshWith(second.refreshToken);
     expect(other.status).toBe(200);
   });
 
-  it('lets exactly one winner through when the same token is presented concurrently', async () => {
+  it('a concurrently replayed token burns the whole family, whatever the interleaving', async () => {
     const { refreshToken } = await registerUser();
 
     const results = await Promise.all([
       refreshWith(refreshToken),
       refreshWith(refreshToken),
     ]);
-    const statuses = results.map((r) => r.status).sort();
+    const successes = results.filter((r) => r.status === 200);
+    const failures = results.filter((r) => r.status === 401);
 
-    // one atomic claim wins; the loser is a replay by definition
-    expect(statuses).toEqual([200, 401]);
-    const loser = results.find((r) => r.status === 401);
-    expect(loser?.body.code).toBe('refresh_token_reused');
+    // The invariant: a concurrent replay can NEVER yield two live sessions.
+    // Depending on the interleaving either one presenter briefly wins (and its
+    // token is already burned) or the tombstone catches both - but never two.
+    expect(successes.length).toBeLessThanOrEqual(1);
+    expect(failures.length).toBeGreaterThanOrEqual(1);
 
-    // and the replay burned the family, winner's fresh token included
-    const winner = results.find((r) => r.status === 200);
-    const descendant = await refreshWith(winner?.body.tokens.refreshToken);
-    expect(descendant.status).toBe(401);
+    // any token that WAS issued during the race must already be dead
+    for (const winner of successes) {
+      expect((await refreshWith(winner.body.tokens.refreshToken)).status).toBe(
+        401,
+      );
+    }
+
+    // and nothing survives at the store level either
+    expect(
+      await RefreshToken.countDocuments({ revokedAt: { $exists: false } }),
+    ).toBe(0);
   });
 
   it('rejects an unknown token', async () => {
@@ -113,23 +122,21 @@ describe('logout', () => {
 
   it('logout-all revokes every session for the user', async () => {
     const { accessToken } = await registerUser();
-    const second = await login();
+    const second = await loginUser();
 
     const out = await request(app)
       .post('/api/auth/logout-all')
       .set('Authorization', `Bearer ${accessToken}`);
     expect(out.status).toBe(204);
 
-    expect((await refreshWith(second.body.tokens.refreshToken)).status).toBe(
-      401,
-    );
+    expect((await refreshWith(second.refreshToken)).status).toBe(401);
   });
 });
 
 describe('session management', () => {
   it("lists live sessions and flags the caller's own", async () => {
     const first = await registerUser();
-    await login();
+    await loginUser();
 
     const res = await request(app)
       .get('/api/auth/sessions')
@@ -145,7 +152,7 @@ describe('session management', () => {
 
   it('revokes a named session', async () => {
     const first = await registerUser();
-    const second = await login();
+    const second = await loginUser();
 
     const list = await request(app)
       .get('/api/auth/sessions')
@@ -161,9 +168,7 @@ describe('session management', () => {
       .set('Authorization', `Bearer ${first.accessToken}`);
     expect(res.status).toBe(204);
 
-    expect((await refreshWith(second.body.tokens.refreshToken)).status).toBe(
-      401,
-    );
+    expect((await refreshWith(second.refreshToken)).status).toBe(401);
     expect((await refreshWith(first.refreshToken)).status).toBe(200);
   });
 

@@ -12,6 +12,7 @@ const ENV_KEYS = [
   'JWT_ACCESS_SECRET',
   'TRUST_PROXY',
   'MAIL_DRIVER',
+  'RESEND_API_KEY',
 ] as const;
 
 const originalEnv: Record<string, string | undefined> = {};
@@ -92,12 +93,19 @@ describe('TRUST_PROXY', () => {
 
 describe('MAIL_DRIVER', () => {
   it('refuses to boot on an unknown driver instead of silently logging mail', () => {
-    process.env.MAIL_DRIVER = 'resend';
+    process.env.MAIL_DRIVER = 'sendgrid';
     expect(loadConfig).toThrow(/MAIL_DRIVER must be one of/);
   });
 
+  it('refuses to boot as resend without an API key', () => {
+    process.env.MAIL_DRIVER = 'resend';
+    process.env.RESEND_API_KEY = ''; // '' defeats dotenv (see note above)
+    expect(loadConfig).toThrow(/RESEND_API_KEY must be set/);
+  });
+
   it('accepts the known drivers', () => {
-    for (const driver of ['console', 'noop']) {
+    process.env.RESEND_API_KEY = 're_test_key';
+    for (const driver of ['console', 'noop', 'resend']) {
       process.env.MAIL_DRIVER = driver;
       expect(loadConfig).not.toThrow();
     }

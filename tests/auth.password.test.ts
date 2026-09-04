@@ -3,7 +3,15 @@ import app from '../src/app';
 import PasswordResetToken from '../src/models/passwordResetToken.model';
 import { noopMailer } from '../src/services/mailer/noop.mailer';
 import { clearTestDb, closeTestDb, connectTestDb } from './helpers/db';
-import { CREDENTIALS, EMAIL, login, registerUser } from './helpers/factories';
+import {
+  CREDENTIALS,
+  EMAIL,
+  latestOtpCode,
+  loginUser,
+  registerUser,
+  startLogin,
+  verifyOtp,
+} from './helpers/factories';
 
 beforeAll(connectTestDb, 120_000);
 afterEach(async () => {
@@ -23,24 +31,47 @@ const tokenFromMail = (): string => {
   return match[1];
 };
 
-describe('POST /api/auth/change-password', () => {
-  it('changes the password and evicts every existing session', async () => {
+const requestChange = (
+  accessToken: string,
+  currentPassword = CREDENTIALS.password,
+) =>
+  request(app)
+    .post('/api/auth/change-password')
+    .set('Authorization', `Bearer ${accessToken}`)
+    .send({ currentPassword, newPassword: NEW_PASSWORD });
+
+describe('POST /api/auth/change-password (OTP-confirmed)', () => {
+  it('opens a challenge; nothing changes until the code is verified', async () => {
     const { accessToken, refreshToken } = await registerUser();
-    const otherSession = await login();
 
-    const res = await request(app)
-      .post('/api/auth/change-password')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        currentPassword: CREDENTIALS.password,
-        newPassword: NEW_PASSWORD,
-      });
-
+    const res = await requestChange(accessToken);
     expect(res.status).toBe(200);
-    expect(typeof res.body.tokens.refreshToken).toBe('string');
+    expect(res.body.challenge.purpose).toBe('password_change');
+    expect(res.body.tokens).toBeUndefined();
 
-    // both the caller's old session and the other device are gone
-    for (const dead of [refreshToken, otherSession.body.tokens.refreshToken]) {
+    // pending only: old password still logs in, old session still refreshes
+    expect((await startLogin()).status).toBe(200);
+    expect(
+      (await request(app).post('/api/auth/refresh').send({ refreshToken }))
+        .status,
+    ).toBe(200);
+  });
+
+  it('verifying the code applies the change and evicts every existing session', async () => {
+    const { accessToken, refreshToken } = await registerUser();
+    const otherSession = await loginUser();
+
+    const res = await requestChange(accessToken);
+    const verified = await verifyOtp(
+      res.body.challenge.challengeId,
+      latestOtpCode(),
+    );
+
+    expect(verified.status).toBe(200);
+    expect(typeof verified.body.tokens.refreshToken).toBe('string');
+
+    // both pre-change sessions are dead
+    for (const dead of [refreshToken, otherSession.refreshToken]) {
       expect(
         (
           await request(app)
@@ -50,38 +81,31 @@ describe('POST /api/auth/change-password', () => {
       ).toBe(401);
     }
 
-    // the pair returned by the change still works
-    const refreshed = await request(app)
-      .post('/api/auth/refresh')
-      .send({ refreshToken: res.body.tokens.refreshToken });
-    expect(refreshed.status).toBe(200);
+    // the fresh pair works; new password logs in; old one does not
+    expect(
+      (
+        await request(app).post('/api/auth/refresh').send({
+          refreshToken: verified.body.tokens.refreshToken,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await startLogin(EMAIL, NEW_PASSWORD)).status).toBe(200);
+    expect((await startLogin(EMAIL, CREDENTIALS.password)).status).toBe(401);
   });
 
-  it('accepts the new password and rejects the old one afterwards', async () => {
+  it('rejects a wrong current password without opening a challenge', async () => {
     const { accessToken } = await registerUser();
-    await request(app)
-      .post('/api/auth/change-password')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        currentPassword: CREDENTIALS.password,
-        newPassword: NEW_PASSWORD,
-      });
+    noopMailer.clear();
 
-    expect((await login(EMAIL, NEW_PASSWORD)).status).toBe(200);
-    expect((await login(EMAIL, CREDENTIALS.password)).status).toBe(401);
-  });
-
-  it('rejects a wrong current password without changing anything', async () => {
-    const { accessToken } = await registerUser();
-
-    const res = await request(app)
-      .post('/api/auth/change-password')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ currentPassword: 'not-my-password', newPassword: NEW_PASSWORD });
-
-    expect(res.status).toBe(401);
-    expect(res.body.code).toBe('invalid_credentials');
-    expect((await login()).status).toBe(200);
+    const res = await requestChange(accessToken, 'not-my-password');
+    // include the body in the failure output - this assertion once flaked
+    // under full parallel load and the status alone did not say why
+    expect({ status: res.status, body: res.body }).toEqual({
+      status: 401,
+      body: expect.objectContaining({ code: 'invalid_credentials' }),
+    });
+    expect(noopMailer.sent).toHaveLength(0);
+    expect((await startLogin()).status).toBe(200);
   });
 
   it('requires authentication', async () => {
@@ -91,11 +115,29 @@ describe('POST /api/auth/change-password', () => {
     });
     expect(res.status).toBe(401);
   });
+
+  it('invalidates outstanding reset links when the change is verified', async () => {
+    const { accessToken } = await registerUser();
+    await request(app).post('/api/auth/forgot-password').send({ email: EMAIL });
+    const preChangeToken = tokenFromMail();
+
+    const res = await requestChange(accessToken);
+    await verifyOtp(res.body.challenge.challengeId, latestOtpCode());
+
+    const hijack = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: preChangeToken, password: 'attacker-password' });
+
+    expect(hijack.status).toBe(401);
+    expect(hijack.body.code).toBe('invalid_reset_token');
+    expect((await startLogin(EMAIL, NEW_PASSWORD)).status).toBe(200);
+  });
 });
 
 describe('POST /api/auth/forgot-password', () => {
   it('sends a reset mail for a known address', async () => {
     await registerUser();
+    noopMailer.clear();
     const res = await request(app)
       .post('/api/auth/forgot-password')
       .send({ email: EMAIL });
@@ -106,8 +148,7 @@ describe('POST /api/auth/forgot-password', () => {
   });
 
   it('is indistinguishable for an unknown address', async () => {
-    const known = await registerUser();
-    expect(known).toBeDefined();
+    await registerUser();
 
     const hit = await request(app)
       .post('/api/auth/forgot-password')
@@ -169,31 +210,29 @@ describe('POST /api/auth/reset-password', () => {
       .send({ token, password: NEW_PASSWORD });
 
     expect(res.status).toBe(200);
-    expect((await login(EMAIL, NEW_PASSWORD)).status).toBe(200);
-    expect((await login(EMAIL, CREDENTIALS.password)).status).toBe(401);
+    expect((await startLogin(EMAIL, NEW_PASSWORD)).status).toBe(200);
+    expect((await startLogin(EMAIL, CREDENTIALS.password)).status).toBe(401);
     expect(
       (await request(app).post('/api/auth/refresh').send({ refreshToken }))
         .status,
     ).toBe(401);
   });
 
-  it('is single use', async () => {
+  it('is single use, even under concurrent presentation', async () => {
     await registerUser();
     const token = await requestReset();
 
-    expect(
-      (
-        await request(app)
-          .post('/api/auth/reset-password')
-          .send({ token, password: NEW_PASSWORD })
-      ).status,
-    ).toBe(200);
+    const results = await Promise.all([
+      request(app)
+        .post('/api/auth/reset-password')
+        .send({ token, password: NEW_PASSWORD }),
+      request(app)
+        .post('/api/auth/reset-password')
+        .send({ token, password: 'other-password' }),
+    ]);
 
-    const replay = await request(app)
-      .post('/api/auth/reset-password')
-      .send({ token, password: 'yet-another-password' });
-    expect(replay.status).toBe(401);
-    expect(replay.body.code).toBe('invalid_reset_token');
+    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+    expect(results.filter((r) => r.status === 401)).toHaveLength(1);
   });
 
   it('rejects an expired token', async () => {
@@ -209,23 +248,6 @@ describe('POST /api/auth/reset-password', () => {
       .send({ token, password: NEW_PASSWORD });
     expect(res.status).toBe(401);
     expect(res.body.code).toBe('invalid_reset_token');
-  });
-
-  it('is single use even under concurrent presentation', async () => {
-    await registerUser();
-    const token = await requestReset();
-
-    const results = await Promise.all([
-      request(app)
-        .post('/api/auth/reset-password')
-        .send({ token, password: NEW_PASSWORD }),
-      request(app)
-        .post('/api/auth/reset-password')
-        .send({ token, password: 'other-password' }),
-    ]);
-
-    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
-    expect(results.filter((r) => r.status === 401)).toHaveLength(1);
   });
 
   it('rejects a forged token', async () => {
