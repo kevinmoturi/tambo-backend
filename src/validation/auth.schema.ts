@@ -45,6 +45,20 @@ export const changePasswordSchema = z.object({
 export const forgotPasswordSchema = z.object({ email });
 export const resetPasswordSchema = z.object({ token: opaqueToken, password });
 
+export const changeEmailSchema = z.object({
+  newEmail: email,
+  password: z.string().min(1, 'Password is required.'),
+});
+
+export const otpVerifySchema = z.object({
+  challengeId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid challenge id.'),
+  code: z.string().regex(/^\d{6}$/, 'The code is 6 digits.'),
+});
+
+export const otpResendSchema = z.object({
+  challengeId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid challenge id.'),
+});
+
 export const sessionIdSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid session id.'),
 });
@@ -52,4 +66,5 @@ export const sessionIdSchema = z.object({
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type ChangeEmailInput = z.infer<typeof changeEmailSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

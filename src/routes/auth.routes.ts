@@ -4,10 +4,13 @@ import { requireAuth } from '../middlewares/auth.middleware';
 import { bodyField, rateLimit } from '../middlewares/rateLimit';
 import { validate } from '../middlewares/validate';
 import {
+  changeEmailSchema,
   changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
   logoutSchema,
+  otpResendSchema,
+  otpVerifySchema,
   refreshSchema,
   registerSchema,
   resetPasswordSchema,
@@ -37,6 +40,21 @@ router.post(
   validate({ body: loginSchema }),
   rateLimit({ name: 'login', subject: bodyField('email') }),
   asyncHandler(authController.login),
+);
+
+// --- Public: OTP completion (register/login/change flows all land here) -----
+router.post(
+  '/otp/verify',
+  validate({ body: otpVerifySchema }),
+  rateLimit({ name: 'otpVerify' }),
+  asyncHandler(authController.verifyOtp),
+);
+
+router.post(
+  '/otp/resend',
+  validate({ body: otpResendSchema }),
+  rateLimit({ name: 'otpResend' }),
+  asyncHandler(authController.resendOtp),
 );
 
 // --- Public: session lifecycle ---------------------------------------------
@@ -76,6 +94,13 @@ router.post(
   requireAuth,
   validate({ body: changePasswordSchema }),
   asyncHandler(authController.changePassword),
+);
+
+router.post(
+  '/change-email',
+  requireAuth,
+  validate({ body: changeEmailSchema }),
+  asyncHandler(authController.changeEmail),
 );
 
 router.post('/logout-all', requireAuth, asyncHandler(authController.logoutAll));
