@@ -56,6 +56,16 @@ On macOS 12 and older the default MongoDB 8.x binary will not run; the suite
 pins 6.0.14. Override with `MONGOMS_VERSION` where a newer build is fine (a
 Linux CI runner, for example).
 
+**Transport note**: suites share ONE listening server each
+(`tests/setup/testServer.ts`) instead of supertest's default
+server-per-request. The default's thousands of ephemeral bind/close cycles per
+run caused kernel port-recycling collisions on older macOS dev machines -
+requests occasionally landed on the wrong server and returned "phantom"
+responses this app cannot produce. The shared server eliminated it (verified
+over repeated full-suite stress runs); `tests/helpers/http.ts` keeps a
+phantom-detecting retry in scaffold steps as a safety net (assertions never
+retry).
+
 ## Requirements
 
 Node 20+, and a MongoDB instance for anything other than running the tests.

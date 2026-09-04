@@ -158,7 +158,16 @@ per-envelope ACKs, device-token auth, server-clock threshold trigger that
 auto-opens episodes and back-attaches the leading evidence, GridFS media
 uploads (hash-verified, idempotent, size-capped) behind a storage seam, and
 retention-as-code (TTL indexes + hourly GridFS sweep).
-Next: **F-C evidence pack & delivery.**
+**F-C DONE (2026-09-05)**: Kenya-mapped evidence pack (JSON + PDF with
+embedded photos), Ed25519-signed integrity manifest (tamper-evident business
+record, never "forensic"), automatic first-alert email on episode open (once
+per recipient per episode via DB claim), full-pack email with PDF attachment
+to owner + eligible contacts, per-recipient delivery audit.
+
+**All three features (F-A, F-B, F-C) are built. The defensible core - "a
+theft becomes a filed, evidenced, insurer-ready pack" - is live end to end:**
+enrol device → evidence uploads → episode opens (threshold or owner) →
+first alert in seconds → signed pack by email.
 
 ### The feature plan
 Planned in detail in [evidence-features-plan.md](evidence-features-plan.md):

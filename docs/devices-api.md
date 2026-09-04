@@ -45,6 +45,37 @@ device to `stolen`.
 
 ### GET /episodes?deviceId= 🔒 · GET /episodes/:id 🔒
 
+## The evidence pack (F-C)
+
+The dossier the product exists to produce (Evidence doc S4): incident summary,
+device identity (owner-entered IMEIs), failed-unlock log, location trail with
+maps links, photos, the Kenya action checklist (OB, eCitizen abstract, IMEI
+blacklist, insurer), and a signed integrity manifest.
+
+### GET /episodes/:id/pack 🔒
+`200` → `{ pack }` - the machine-readable JSON pack. `pack.integrity` carries
+per-item SHA-256 hashes (verified at ingest), server receipt timestamps, the
+Ed25519 public key, and a signature over the canonical manifest JSON. Wording
+discipline: this is a TAMPER-EVIDENT BUSINESS RECORD, never claimed as
+forensic certification.
+
+### GET /episodes/:id/pack.pdf 🔒
+`200` → the human-readable PDF (photos embedded when decodable), the document
+an owner forwards to an insurer or shows at a police station.
+
+### POST /episodes/:id/send-pack 🔒
+Builds the pack and emails the PDF to the owner and every eligible trusted
+contact (pending + opted_in; declined/revoked are never contacted). Returns
+`{ recipients }`. Re-sending is allowed - more evidence may have landed - and
+every send is recorded. Rate-limited (10/hour).
+
+### First alerts (automatic)
+The moment an episode opens - owner mark-stolen OR the device threshold - a
+tiny first-alert email goes to the owner and eligible contacts (Evidence doc
+S2.3: time-to-first-alert is the metric that matters emotionally). Exactly
+once per recipient per episode, enforced by a database claim, so converging
+openers can never double-alert. The full pack follows via send-pack.
+
 ## Trusted contacts
 
 A trusted contact is a third party — consent is THEIRS to give, not the
