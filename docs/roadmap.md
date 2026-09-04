@@ -75,13 +75,15 @@ Committed and pushed 2026-09-05.**
 1. ✅ **Commit the work** — committed as a series and pushed (2026-09-04).
 2. ✅ **Rotate the Atlas password** — rotated (2026-09-04); `.env` updated and
    the connection verified.
-3. 🔶 **Providers**: email is now Resend (key supplied 2026-09-05, driver
-   built) but **no verified sending domain yet** — real users receive nothing
-   until the DNS records in docs/cloudflare.md are added. SMS provider still
-   undecided; phone OTP waits on it.
-4. ⬜ **Cloudflare**: full operator runbook in docs/cloudflare.md. Needs from
-   the owner: the domain name, DNS access (or a scoped CF API token), and the
-   production API hostname.
+3. ✅ **Email provider LIVE (2026-09-05)**: `tambo-app.com` verified in Resend
+   (eu-west-1, sending on, receiving deliberately off), production sends
+   confirmed end-to-end through the app's driver. `MAIL_DRIVER=resend`,
+   `MAIL_FROM=Tambo <no-reply@tambo-app.com>`. SMS provider still undecided;
+   phone OTP waits on it.
+4. 🔶 **Cloudflare**: DNS for `tambo-app.com` currently lives at
+   stableserver.net, where the Resend records were added. Moving the zone to
+   Cloudflare (runbook §2-4: API proxying, WAF, TRUST_PROXY) still pending -
+   needs registrar access and the production API hostname.
 5. 👤 **Rotate the Resend API key** after setup — it was pasted into a chat
    conversation (same hygiene as the Atlas password was).
 
