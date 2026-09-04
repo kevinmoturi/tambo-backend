@@ -1,0 +1,113 @@
+import Device from '../models/device.model';
+import type { IDevice } from '../models/device.model';
+import TheftEpisode from '../models/theftEpisode.model';
+import type {
+  EpisodeOpener,
+  ITheftEpisode,
+} from '../models/theftEpisode.model';
+import { AppError } from '../utils/appError';
+import { isDuplicateKeyError } from '../utils/mongoErrors';
+import * as deviceService from './device.service';
+
+/**
+ * Opens an episode for a device, or returns the one already open - both the
+ * owner and the device's own threshold signal may fire around the same theft,
+ * and that must converge on ONE episode, not two. The partial unique index on
+ * (device, status: open) makes the database the referee: a concurrent second
+ * opener loses on the index and is handed the winner's episode.
+ *
+ * This is the seam evidence ingest (F-B) calls with openedBy: 'device'.
+ */
+export const openEpisode = async (
+  device: IDevice,
+  openedBy: EpisodeOpener,
+  note?: string,
+): Promise<{ episode: ITheftEpisode; created: boolean }> => {
+  const existing = await TheftEpisode.findOne({
+    device: device._id,
+    status: 'open',
+  });
+  if (existing) return { episode: existing, created: false };
+
+  try {
+    const episode = await TheftEpisode.create({
+      user: device.user,
+      device: device._id,
+      openedBy,
+      openedAt: new Date(),
+      ...(note ? { note } : {}),
+    });
+
+    await Device.updateOne({ _id: device._id }, { $set: { status: 'stolen' } });
+    return { episode, created: true };
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      // lost the race to a concurrent opener - converge on their episode
+      const winner = await TheftEpisode.findOne({
+        device: device._id,
+        status: 'open',
+      });
+      if (winner) return { episode: winner, created: false };
+    }
+    throw error;
+  }
+};
+
+/** Owner marks the device stolen (from another device). Idempotent. */
+export const markStolen = async (
+  userId: string,
+  deviceId: string,
+  note?: string,
+): Promise<{ episode: ITheftEpisode; created: boolean }> => {
+  const device = await deviceService.getOwned(userId, deviceId);
+  return openEpisode(device, 'owner', note);
+};
+
+/** Owner marks the device back in hand; resolves the open episode. */
+export const markRecovered = async (
+  userId: string,
+  deviceId: string,
+): Promise<ITheftEpisode> => {
+  const device = await deviceService.getOwned(userId, deviceId);
+
+  const episode = await TheftEpisode.findOneAndUpdate(
+    { device: device._id, status: 'open' },
+    {
+      $set: {
+        status: 'resolved',
+        resolution: 'recovered',
+        resolvedAt: new Date(),
+      },
+    },
+    { new: true },
+  );
+
+  if (!episode) {
+    throw AppError.notFound(
+      'No open theft episode for this device.',
+      'episode_not_found',
+    );
+  }
+
+  await Device.updateOne({ _id: device._id }, { $set: { status: 'active' } });
+  return episode;
+};
+
+export const list = async (
+  userId: string,
+  deviceId?: string,
+): Promise<ITheftEpisode[]> => {
+  const filter: Record<string, unknown> = { user: userId };
+  if (deviceId) filter.device = deviceId;
+  return TheftEpisode.find(filter).sort({ openedAt: -1 }).exec();
+};
+
+export const getOwned = async (
+  userId: string,
+  episodeId: string,
+): Promise<ITheftEpisode> => {
+  const episode = await TheftEpisode.findOne({ _id: episodeId, user: userId });
+  if (!episode)
+    throw AppError.notFound('Episode not found.', 'episode_not_found');
+  return episode;
+};
