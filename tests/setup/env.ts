@@ -1,3 +1,14 @@
+import http from 'http';
+
+/**
+ * Node >= 19 turns keep-alive ON for the global HTTP agent. supertest spins up
+ * an ephemeral server per request, and under parallel-suite load the socket
+ * reuse produces transport-level flakes: "Parse Error: Expected HTTP/",
+ * empty-body 400/404s that no app handler ever wrote. One connection per
+ * request makes the suite deterministic.
+ */
+http.globalAgent = new http.Agent({ keepAlive: false });
+
 /**
  * Runs before any module (including config.ts) is imported, so these win over
  * whatever is in .env - dotenv never overrides an already-set variable.
