@@ -80,10 +80,10 @@ Committed and pushed 2026-09-05.**
    confirmed end-to-end through the app's driver. `MAIL_DRIVER=resend`,
    `MAIL_FROM=Tambo <no-reply@tambo-app.com>`. SMS provider still undecided;
    phone OTP waits on it.
-4. 🔶 **Cloudflare**: DNS for `tambo-app.com` currently lives at
-   stableserver.net, where the Resend records were added. Moving the zone to
-   Cloudflare (runbook §2-4: API proxying, WAF, TRUST_PROXY) still pending -
-   needs registrar access and the production API hostname.
+4. 👤 **Cloudflare — PARKED, owner is handling it** (2026-09-05). Zone is on
+   Cloudflare nameservers and Resend records are live; remaining runbook items
+   (stray apex TXT deletion, SSL Full-strict, API proxying, TRUST_PROXY) are
+   with the owner. docs/cloudflare.md stays the reference.
 5. 👤 **Rotate the Resend API key** after setup — it was pasted into a chat
    conversation (same hygiene as the Atlas password was).
 
@@ -146,6 +146,15 @@ real mail driver, account lockout, 2FA, OpenAPI spec, CI pipeline.
 - Set `CORS_ALLOWED_ORIGINS` only if a browser client exists (empty = deny all,
   correct for mobile-only).
 - `NODE_ENV=production` + real `JWT_ACCESS_SECRET` (boot fails without it).
+
+### ⬜ NEXT BUILD: the first three major product features
+Planned in detail in [evidence-features-plan.md](evidence-features-plan.md):
+**F-A** Devices, Theft Episodes & Trusted Contacts (device tokens, mark-stolen,
+consent state machine) → **F-B** Evidence Ingest (idempotent envelopes, hash
+verification, GridFS media, retention-as-TTL) → **F-C** Evidence Pack &
+Delivery (Kenya-mapped JSON+PDF, Ed25519-signed manifest, first-alert +
+full-pack email via the live Resend spine). WhatsApp deferred. One open gate
+flagged for the owner: **hosting region** (blocks the DPIA, not the code).
 
 ## Not planned
 - Cookie/session auth for browsers — the API is token-based and mobile-first.
