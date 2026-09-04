@@ -1,7 +1,15 @@
+export interface MailAttachment {
+  filename: string;
+  /** Base64-encoded file content. */
+  content: string;
+  contentType?: string;
+}
+
 export interface MailMessage {
   to: string;
   subject: string;
   text: string;
+  attachments?: MailAttachment[];
 }
 
 /**

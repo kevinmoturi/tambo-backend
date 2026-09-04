@@ -23,6 +23,17 @@ export const resendMailer: Mailer = {
         to: message.to,
         subject: message.subject,
         text: message.text,
+        ...(message.attachments?.length
+          ? {
+              attachments: message.attachments.map((attachment) => ({
+                filename: attachment.filename,
+                content: attachment.content, // base64, per the Resend API
+                ...(attachment.contentType
+                  ? { content_type: attachment.contentType }
+                  : {}),
+              })),
+            }
+          : {}),
       }),
     });
 

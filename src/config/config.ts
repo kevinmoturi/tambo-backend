@@ -66,6 +66,8 @@ interface Config {
    * mobile deep-link scheme.
    */
   publicApiUrl: string;
+  /** 32-byte hex seed for the Ed25519 key that signs evidence-pack manifests. */
+  packSigningSeed: string;
   mail: {
     /** 'console' logs to stdout, 'noop' discards. Real providers slot in here. */
     driver: MailDriver;
@@ -146,6 +148,25 @@ const parseMailDriver = (): MailDriver => {
   return raw as MailDriver;
 };
 
+/**
+ * The pack-signing seed follows the JWT-secret rules: a built-in fallback only
+ * in explicit development/test (announced), refusal to boot anywhere else -
+ * and it must be a stable 64-hex-char value, because rotating it silently
+ * would break verification of every pack already delivered.
+ */
+const parsePackSigningSeed = (): string => {
+  const value = required(
+    'PACK_SIGNING_SEED',
+    'a4dc0ffee0ddba11ca11ab1eca55e77e5eed5eed5eed5eed5eed5eed5eed5eed',
+  );
+  if (!/^[a-f\d]{64}$/i.test(value)) {
+    throw new Error(
+      'PACK_SIGNING_SEED must be 64 hex characters (a 32-byte seed).',
+    );
+  }
+  return value;
+};
+
 const config: Config = {
   port: Number(process.env.PORT) || 3000,
   nodeEnv: rawNodeEnv || 'development',
@@ -190,6 +211,7 @@ const config: Config = {
   publicApiUrl:
     process.env.API_PUBLIC_URL ||
     `http://localhost:${Number(process.env.PORT) || 3000}`,
+  packSigningSeed: parsePackSigningSeed(),
   mail: {
     driver: parseMailDriver(),
     from: process.env.MAIL_FROM || 'Tambo <no-reply@tambo.local>',
