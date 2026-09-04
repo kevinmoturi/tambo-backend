@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes';
 import healthRoutes from './routes/health.routes';
 import consentRoutes from './routes/v1/consent.routes';
 import deviceRoutes from './routes/v1/device.routes';
+import evidenceRoutes from './routes/v1/evidence.routes';
 import episodeRoutes from './routes/v1/episode.routes';
 import trustedContactRoutes from './routes/v1/trustedContact.routes';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
@@ -21,6 +22,17 @@ app.set('trust proxy', config.trustProxy);
 
 app.disable('x-powered-by');
 app.use(helmet());
+
+// Test runs only: close every connection after its response. supertest spins
+// up an ephemeral server per request, and socket reuse across those under
+// parallel-suite load yields transport corruption ("Parse Error: Expected
+// HTTP/", empty-body 4xx no handler wrote). Production keeps keep-alive.
+if (config.nodeEnv === 'test') {
+  app.use((_req, res, next) => {
+    res.set('Connection', 'close');
+    next();
+  });
+}
 
 /**
  * Native mobile clients send no Origin header and are unaffected by CORS. This
@@ -38,13 +50,23 @@ app.use(
   }),
 );
 
-// Bodies are small JSON payloads; the cap blunts trivial memory-pressure attacks.
-app.use(express.json({ limit: '100kb' }));
+// Bodies are small JSON payloads; the cap blunts trivial memory-pressure
+// attacks. Evidence routes are exempt: they parse their own bodies (bigger
+// envelope batches, raw photo bytes) with their own caps.
+const defaultJsonParser = express.json({ limit: '100kb' });
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/v1/evidence')) {
+    next();
+    return;
+  }
+  defaultJsonParser(req, res, next);
+});
 
 // --- Routes ----------------------------------------------------------------
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/v1/devices', deviceRoutes);
+app.use('/api/v1/evidence', evidenceRoutes);
 app.use('/api/v1/episodes', episodeRoutes);
 app.use('/api/v1/trusted-contacts', trustedContactRoutes);
 app.use('/api/v1/consent', consentRoutes);
