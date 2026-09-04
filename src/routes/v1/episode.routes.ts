@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import * as episodeController from '../../controllers/episode.controller';
+import * as packController from '../../controllers/pack.controller';
+import { rateLimit } from '../../middlewares/rateLimit';
 import { requireAuth } from '../../middlewares/auth.middleware';
 import { validate } from '../../middlewares/validate';
 import {
@@ -21,6 +23,24 @@ router.get(
   '/:id',
   validate({ params: episodeIdSchema }),
   asyncHandler(episodeController.get),
+);
+
+// --- The evidence pack (F-C): the dossier this product exists to produce ----
+router.get(
+  '/:id/pack',
+  validate({ params: episodeIdSchema }),
+  asyncHandler(packController.getJson),
+);
+router.get(
+  '/:id/pack.pdf',
+  validate({ params: episodeIdSchema }),
+  asyncHandler(packController.getPdf),
+);
+router.post(
+  '/:id/send-pack',
+  validate({ params: episodeIdSchema }),
+  rateLimit({ name: 'packSend' }),
+  asyncHandler(packController.send),
 );
 
 export default router;

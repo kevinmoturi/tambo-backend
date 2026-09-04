@@ -33,4 +33,6 @@ export const rateLimits = {
   evidenceIngest: { limit: 240, windowSeconds: 60 * 60 },
   /** Photo uploads. Keyed per device. */
   mediaUpload: { limit: 60, windowSeconds: 60 * 60 },
+  /** Full-pack emails fan out to several mailboxes. Keyed on IP. */
+  packSend: { limit: 10, windowSeconds: 60 * 60 },
 } satisfies Record<string, RateLimitRule>;

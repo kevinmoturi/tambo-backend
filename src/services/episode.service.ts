@@ -7,6 +7,7 @@ import type {
 } from '../models/theftEpisode.model';
 import { AppError } from '../utils/appError';
 import { isDuplicateKeyError } from '../utils/mongoErrors';
+import * as deliveryService from './delivery.service';
 import * as deviceService from './device.service';
 
 /**
@@ -39,6 +40,15 @@ export const openEpisode = async (
     });
 
     await Device.updateOne({ _id: device._id }, { $set: { status: 'stolen' } });
+
+    // the F-C first-alert: the owner learns NOW; the pack follows as evidence
+    // uploads. Deduped per recipient by the delivery model's unique claim, so
+    // converging openers cannot double-alert. Fire-and-forget: alerting must
+    // never fail the request that detected the theft.
+    void deliveryService.sendFirstAlert(episode, device).catch((error) => {
+      console.error('Failed to dispatch first alert:', error);
+    });
+
     return { episode, created: true };
   } catch (error) {
     if (isDuplicateKeyError(error)) {
