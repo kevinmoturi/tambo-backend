@@ -70,15 +70,19 @@ describe('register validation', () => {
   });
 
   it('strips unknown keys rather than passing them to the model', async () => {
+    const suppliedVerificationDate = new Date(0).toISOString();
     const res = await post('/api/auth/register', {
       ...CREDENTIALS,
-      emailVerifiedAt: new Date().toISOString(),
+      emailVerifiedAt: suppliedVerificationDate,
       isAdmin: true,
     });
 
     expect(res.status).toBe(201);
     const stored = await User.findOne({});
-    expect(stored?.emailVerifiedAt).toBeUndefined();
+    expect(stored?.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(stored?.emailVerifiedAt?.toISOString()).not.toBe(
+      suppliedVerificationDate,
+    );
     expect(stored?.toObject()).not.toHaveProperty('isAdmin');
   });
 });

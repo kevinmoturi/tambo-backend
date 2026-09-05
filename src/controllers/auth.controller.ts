@@ -41,18 +41,21 @@ const sendChallenge = (
   res.status(status).json({ challenge });
 };
 
-// --- Credential entry points: each opens an OTP challenge -------------------
+// --- Credential entry points -------------------------------------------------
 
 export const register = async (req: Request, res: Response): Promise<void> => {
-  const challenge = await passwordCredential.register(
-    req.body as RegisterInput,
-    userAgentOf(req),
+  sendAuthResult(
+    res,
+    await passwordCredential.register(
+      req.body as RegisterInput,
+      userAgentOf(req),
+    ),
+    201,
   );
-  sendChallenge(res, challenge, 201);
 };
 
 export const login = async (req: Request, res: Response): Promise<void> => {
-  sendChallenge(
+  sendAuthResult(
     res,
     await passwordCredential.login(req.body as LoginInput, userAgentOf(req)),
   );

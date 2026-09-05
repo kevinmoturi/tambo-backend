@@ -5,12 +5,10 @@ import { clearTestDb, closeTestDb, connectTestDb } from './helpers/db';
 import {
   CREDENTIALS,
   EMAIL,
-  latestOtpCode,
   loginUser,
   registerUser,
   startLogin,
   startRegister,
-  verifyOtp,
 } from './helpers/factories';
 
 beforeAll(connectTestDb, 120_000);
@@ -18,50 +16,31 @@ afterEach(clearTestDb);
 afterAll(closeTestDb);
 
 describe('POST /api/auth/register', () => {
-  it('opens a signup challenge instead of issuing tokens directly', async () => {
+  it('returns the user and tokens immediately', async () => {
     const res = await startRegister();
 
     expect(res.status).toBe(201);
-    expect(res.body.challenge).toMatchObject({ purpose: 'signup' });
-    expect(typeof res.body.challenge.challengeId).toBe('string');
-    // no session until the mailbox is proven
-    expect(res.body.tokens).toBeUndefined();
-    expect(res.body.user).toBeUndefined();
-  });
-
-  it('verifying the emailed code issues tokens and marks the email verified', async () => {
-    const res = await startRegister();
-    const verified = await verifyOtp(
-      res.body.challenge.challengeId,
-      latestOtpCode(),
-    );
-
-    expect(verified.status).toBe(200);
-    expect(verified.body.user).toMatchObject({
+    expect(res.body.user).toMatchObject({
       name: 'Ada Lovelace',
       email: EMAIL,
       role: 'user',
     });
-    expect(verified.body.user.emailVerifiedAt).toBeTruthy();
-    expect(typeof verified.body.tokens.accessToken).toBe('string');
+    expect(res.body.user.emailVerifiedAt).toBeTruthy();
+    expect(typeof res.body.tokens.accessToken).toBe('string');
+    expect(typeof res.body.tokens.refreshToken).toBe('string');
+    expect(res.body.challenge).toBeUndefined();
 
     const me = await request(testServer())
       .get('/api/auth/me')
-      .set('Authorization', `Bearer ${verified.body.tokens.accessToken}`);
+      .set('Authorization', `Bearer ${res.body.tokens.accessToken}`);
     expect(me.status).toBe(200);
   });
 
-  it('never exposes the password hash anywhere in the flow', async () => {
+  it('never exposes the password hash', async () => {
     const res = await startRegister();
-    const verified = await verifyOtp(
-      res.body.challenge.challengeId,
-      latestOtpCode(),
-    );
 
-    for (const body of [res.body, verified.body]) {
-      expect(JSON.stringify(body)).not.toContain('$2b$');
-    }
-    expect(verified.body.user.passwordHash).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toContain('$2b$');
+    expect(res.body.user.passwordHash).toBeUndefined();
   });
 
   it('treats email as case-insensitive for uniqueness', async () => {
@@ -86,27 +65,25 @@ describe('POST /api/auth/register', () => {
     const res = await startRegister({ role: 'admin' } as Partial<
       typeof CREDENTIALS
     >);
-    expect(res.status).toBe(201);
 
-    const verified = await verifyOtp(
-      res.body.challenge.challengeId,
-      latestOtpCode(),
-    );
-    expect(verified.body.user.role).toBe('user');
+    expect(res.status).toBe(201);
+    expect(res.body.user.role).toBe('user');
   });
 });
 
 describe('POST /api/auth/login', () => {
-  it('opens a login challenge after the password checks out, ignoring email casing', async () => {
+  it('returns the user and tokens after the password checks out, ignoring email casing', async () => {
     await registerUser();
     const res = await startLogin('ADA@tambo.app');
 
     expect(res.status).toBe(200);
-    expect(res.body.challenge.purpose).toBe('login');
-    expect(res.body.tokens).toBeUndefined();
+    expect(res.body.user.email).toBe(EMAIL);
+    expect(typeof res.body.tokens.accessToken).toBe('string');
+    expect(typeof res.body.tokens.refreshToken).toBe('string');
+    expect(res.body.challenge).toBeUndefined();
   });
 
-  it('completing the login challenge issues a usable session', async () => {
+  it('issues a usable session directly', async () => {
     await registerUser();
     const { accessToken } = await loginUser();
 
@@ -148,17 +125,14 @@ describe('POST /api/auth/login', () => {
     expect(stillValid.status).toBe(200);
   });
 
-  it('heals an unverified account: a login code proves the mailbox too', async () => {
-    // register but never complete the signup OTP
+  it('allows login without an email verification timestamp', async () => {
     await startRegister();
-    expect(
-      (await User.findOne({ email: EMAIL }))?.emailVerifiedAt,
-    ).toBeUndefined();
+    await User.updateOne({ email: EMAIL }, { $unset: { emailVerifiedAt: 1 } });
 
-    await loginUser();
-    expect(
-      (await User.findOne({ email: EMAIL }))?.emailVerifiedAt,
-    ).toBeTruthy();
+    const res = await startLogin();
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.tokens.accessToken).toBe('string');
   });
 });
 

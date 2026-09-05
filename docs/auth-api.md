@@ -12,12 +12,12 @@ Authorization: Bearer <accessToken>
 
 ## The OTP model
 
-Every authentication-changing action is completed by a 6-digit code emailed to
-the relevant mailbox. Endpoints that *start* such an action return a
-**challenge** instead of tokens:
+Sensitive authentication changes are completed by a 6-digit code emailed to
+the relevant mailbox. Endpoints that start those actions return a **challenge**
+instead of tokens:
 
 ```json
-{ "challenge": { "challengeId": "665f...", "purpose": "login", "expiresInMinutes": 10 } }
+{ "challenge": { "challengeId": "665f...", "purpose": "password_change", "expiresInMinutes": 10 } }
 ```
 
 The client then collects the code from the user and calls `POST /otp/verify`,
@@ -35,26 +35,33 @@ wrong guesses, and are single-use. A new challenge for the same purpose kills
 the previous one.
 
 ```
-register ──┐
-login ─────┤                                  ┌─> tokens (signup/login/
-change-password ──┼──> challenge ──> POST /otp/verify ─┤    password/email applied)
-change-email ─────┘        │                           └─> 401 wrong/expired code
-                           └─> POST /otp/resend (cooldown-limited)
+change-password ──┐                            ┌─> tokens (password/email applied)
+change-email ──────┴──> challenge ──> POST /otp/verify
+                            │                   └─> 401 wrong/expired code
+                            └─> POST /otp/resend (cooldown-limited)
+register/login ──> credentials accepted ──> user + tokens
 ```
 
 ---
 
 ## POST /register
 
-Creates the account (unverified) and opens a `signup` challenge. **No tokens
-yet** — verifying the code proves the mailbox, sets `emailVerifiedAt`, and
-returns the first session.
+Creates the account, marks its email as verified without sending a verification
+code, and starts the first session immediately. Email ownership verification is
+currently bypassed in every environment.
 
 ```json
 { "name": "Ada Lovelace", "email": "ada@tambo.app", "password": "8+ chars, at most 72 bytes" }
 ```
 
-`201` → challenge envelope.
+`201` → user and token pair:
+
+```json
+{
+  "user": { "_id": "...", "name": "Ada Lovelace", "email": "ada@tambo.app", "role": "user", "emailVerifiedAt": "..." },
+  "tokens": { "accessToken": "eyJ...", "refreshToken": "9f3c...", "expiresIn": "15m" }
+}
+```
 
 | Code | Status | Meaning |
 |---|---|---|
@@ -66,15 +73,21 @@ Unknown keys are stripped, so posting `"role": "admin"` does nothing.
 
 ## POST /login
 
-Password check first; a correct password opens a `login` challenge and emails a
-code. A user who never finished signup verification is healed here — the login
-code proves the mailbox just as well.
+A correct email and password starts a session directly. Login does not require
+an email verification timestamp.
 
 ```json
 { "email": "ada@tambo.app", "password": "..." }
 ```
 
-`200` → challenge envelope.
+`200` → user and token pair:
+
+```json
+{
+  "user": { "_id": "...", "name": "Ada Lovelace", "email": "ada@tambo.app", "role": "user" },
+  "tokens": { "accessToken": "eyJ...", "refreshToken": "9f3c...", "expiresIn": "15m" }
+}
+```
 
 | Code | Status | Meaning |
 |---|---|---|
@@ -93,7 +106,6 @@ Completes whichever flow opened the challenge.
 
 | Purpose | On verify |
 |---|---|
-| `signup`, `login` | `emailVerifiedAt` set if missing; session issued |
 | `password_change` | New password applied; **every other session and reset link revoked**; fresh session issued |
 | `email_change` | Email updated + verified; **every other session and reset link revoked**; fresh session issued |
 

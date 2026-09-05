@@ -7,6 +7,7 @@ import { AppError } from '../../utils/appError';
 import { isDuplicateKeyError } from '../../utils/mongoErrors';
 import { generateOpaqueToken, hashOpaqueToken } from '../../utils/tokens';
 import { mailer } from '../mailer';
+import * as buddyService from '../buddy.service';
 import * as otpService from '../otp.service';
 import type { ChallengeSummary } from '../otp.service';
 import * as sessionService from '../session.service';
@@ -21,10 +22,9 @@ import type {
 
 /**
  * Email + password credentials. This module is the ONLY place that knows about
- * passwords; session issuance lives in session.service and every
- * authentication-changing action is completed through an emailed OTP
- * (otp.service). A future otp SMS credential implements the same shape for
- * phone login and reuses the exact same session machinery.
+ * passwords; session issuance lives in session.service, while sensitive
+ * credential changes are completed through an emailed OTP (otp.service).
+ * A future otp SMS credential can reuse the same session machinery.
  */
 
 export interface AuthResult {
@@ -65,14 +65,11 @@ const setPassword = async (user: IUser, newPassword: string): Promise<void> => {
   ]);
 };
 
-/**
- * Creates the (unverified) account and opens a signup challenge. Tokens are
- * only issued once the emailed code proves the mailbox - see otp.service.
- */
+/** Creates an account and starts its first session immediately. */
 export const register = async (
   input: RegisterInput,
   userAgent?: string,
-): Promise<ChallengeSummary> => {
+): Promise<AuthResult> => {
   // No exists() pre-check: the unique index is the authority, and translating
   // its violation avoids the race where two concurrent registrations both pass
   // a pre-check and the loser surfaces as a 500.
@@ -82,6 +79,7 @@ export const register = async (
       name: input.name,
       email: input.email,
       passwordHash: await hashPassword(input.password),
+      emailVerifiedAt: new Date(),
     });
   } catch (error) {
     if (isDuplicateKeyError(error)) {
@@ -93,18 +91,15 @@ export const register = async (
     throw error;
   }
 
-  return otpService.createChallenge(user, 'signup', { userAgent });
+  await buddyService.bindPendingInvites(user);
+  return { user, tokens: await sessionService.startSession(user, userAgent) };
 };
 
-/**
- * Password check first, then an OTP to the registered mailbox; tokens are
- * issued only when the code is verified. (An unverified signup heals here:
- * the login code proves the mailbox just as well.)
- */
+/** Password login; starts a session immediately. */
 export const login = async (
   input: LoginInput,
   userAgent?: string,
-): Promise<ChallengeSummary> => {
+): Promise<AuthResult> => {
   const user = await User.findOne({ email: input.email }).select(
     '+passwordHash',
   );
@@ -122,7 +117,7 @@ export const login = async (
     );
   }
 
-  return otpService.createChallenge(user, 'login', { userAgent });
+  return { user, tokens: await sessionService.startSession(user, userAgent) };
 };
 
 /**

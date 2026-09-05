@@ -4,6 +4,7 @@ import config from '../src/config/config';
 import OtpChallenge from '../src/models/otpChallenge.model';
 import User from '../src/models/user.model';
 import { noopMailer } from '../src/services/mailer/noop.mailer';
+import * as otpService from '../src/services/otp.service';
 import { clearTestDb, closeTestDb, connectTestDb } from './helpers/db';
 import {
   CREDENTIALS,
@@ -11,7 +12,7 @@ import {
   latestOtpCode,
   registerUser,
   startLogin,
-  startRegister,
+  startSignupChallenge,
   verifyOtp,
 } from './helpers/factories';
 
@@ -28,7 +29,7 @@ const wrongCode = (real: string): string =>
 
 describe('OTP mail', () => {
   it('emails a 6-digit code to the registered address on signup', async () => {
-    await startRegister();
+    await startSignupChallenge();
 
     const mail = noopMailer.sent.at(-1);
     expect(mail?.to).toBe(EMAIL);
@@ -37,7 +38,7 @@ describe('OTP mail', () => {
   });
 
   it('stores only a hash of the code, never the code itself', async () => {
-    await startRegister();
+    await startSignupChallenge();
     const code = latestOtpCode();
 
     const challenge = await OtpChallenge.findOne({});
@@ -49,7 +50,7 @@ describe('OTP mail', () => {
 
 describe('code verification', () => {
   it('rejects a wrong code without consuming the challenge', async () => {
-    const res = await startRegister();
+    const res = await startSignupChallenge();
     const code = latestOtpCode();
 
     const wrong = await verifyOtp(
@@ -66,7 +67,7 @@ describe('code verification', () => {
   });
 
   it('burns the challenge after maxAttempts wrong guesses - even for the real code', async () => {
-    const res = await startRegister();
+    const res = await startSignupChallenge();
     const code = latestOtpCode();
     const { challengeId } = res.body.challenge;
 
@@ -82,7 +83,7 @@ describe('code verification', () => {
   });
 
   it('is single-use: a consumed challenge cannot be verified again', async () => {
-    const res = await startRegister();
+    const res = await startSignupChallenge();
     const code = latestOtpCode();
 
     expect((await verifyOtp(res.body.challenge.challengeId, code)).status).toBe(
@@ -95,7 +96,7 @@ describe('code verification', () => {
   });
 
   it('lets exactly one winner through under concurrent submission', async () => {
-    const res = await startRegister();
+    const res = await startSignupChallenge();
     const code = latestOtpCode();
 
     const results = await Promise.all([
@@ -107,7 +108,7 @@ describe('code verification', () => {
   });
 
   it('rejects an expired challenge', async () => {
-    const res = await startRegister();
+    const res = await startSignupChallenge();
     const code = latestOtpCode();
     await OtpChallenge.updateMany(
       {},
@@ -120,19 +121,18 @@ describe('code verification', () => {
   });
 
   it('a new challenge for the same purpose burns the previous one', async () => {
-    await registerUser();
-
-    const first = await startLogin();
+    const first = await startSignupChallenge();
     const firstCode = latestOtpCode();
-    const second = await startLogin();
+    const user = await User.findOne({ email: EMAIL });
+    if (!user) throw new Error('registered user not found');
+    const second = await otpService.createChallenge(user, 'signup');
 
     const stale = await verifyOtp(first.body.challenge.challengeId, firstCode);
     expect(stale.status).toBe(401);
 
-    expect(
-      (await verifyOtp(second.body.challenge.challengeId, latestOtpCode()))
-        .status,
-    ).toBe(200);
+    expect((await verifyOtp(second.challengeId, latestOtpCode())).status).toBe(
+      200,
+    );
   });
 });
 
@@ -141,7 +141,7 @@ describe('POST /api/auth/otp/resend', () => {
     request(testServer()).post('/api/auth/otp/resend').send({ challengeId });
 
   it('enforces the cooldown with a Retry-After', async () => {
-    const res = await startRegister();
+    const res = await startSignupChallenge();
 
     const tooSoon = await resend(res.body.challenge.challengeId);
     expect(tooSoon.status).toBe(429);
@@ -152,7 +152,7 @@ describe('POST /api/auth/otp/resend', () => {
     const original = config.otp.resendCooldownSeconds;
     config.otp.resendCooldownSeconds = 0;
     try {
-      const res = await startRegister();
+      const res = await startSignupChallenge();
       const oldCode = latestOtpCode();
       const { challengeId } = res.body.challenge;
 
@@ -170,7 +170,7 @@ describe('POST /api/auth/otp/resend', () => {
   });
 
   it('refuses to resend a consumed or unknown challenge', async () => {
-    const res = await startRegister();
+    const res = await startSignupChallenge();
     await verifyOtp(res.body.challenge.challengeId, latestOtpCode());
 
     const consumed = await resend(res.body.challenge.challengeId);

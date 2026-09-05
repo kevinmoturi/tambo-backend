@@ -2,6 +2,8 @@ import request from 'supertest';
 import { testServer } from '../setup/testServer';
 import { noopMailer } from '../../src/services/mailer/noop.mailer';
 import { retryPhantom } from './http';
+import User from '../../src/models/user.model';
+import * as otpService from '../../src/services/otp.service';
 
 export const CREDENTIALS = {
   name: 'Ada Lovelace',
@@ -32,19 +34,30 @@ export const verifyOtp = (challengeId: string, code: string) =>
     .post('/api/auth/otp/verify')
     .send({ challengeId, code });
 
-/** Registration step 1 only: returns the raw challenge response. */
+/** Returns the raw registration response. */
 export const startRegister = (overrides: Partial<typeof CREDENTIALS> = {}) =>
   request(testServer())
     .post('/api/auth/register')
     .send({ ...CREDENTIALS, ...overrides });
 
-/** Login step 1 only: returns the raw challenge response. */
+export const startSignupChallenge = async () => {
+  const registration = await startRegister();
+  const user = await User.findOne({ email: EMAIL });
+  if (registration.status !== 201 || !user) {
+    throw new Error('could not create signup challenge fixture');
+  }
+  return {
+    body: { challenge: await otpService.createChallenge(user, 'signup') },
+  };
+};
+
+/** Returns the raw login response. */
 export const startLogin = (
   email = CREDENTIALS.email,
   password = CREDENTIALS.password,
 ) => request(testServer()).post('/api/auth/login').send({ email, password });
 
-/** Full signup: register, then complete the emailed OTP. Returns a live session. */
+/** Full signup. Returns the session issued by registration. */
 export const registerUser = async (
   overrides: Partial<typeof CREDENTIALS> = {},
 ): Promise<Registered> => {
@@ -55,26 +68,14 @@ export const registerUser = async (
     );
   }
 
-  const verified = await retryPhantom(
-    () => verifyOtp(res.body.challenge.challengeId, latestOtpCode()),
-    'register-otp-verify',
-  );
-  if (verified.status !== 200) {
-    throw new Error(
-      `registerUser OTP failed: ${verified.status} body=${JSON.stringify(verified.body)} ` +
-        `text=${JSON.stringify(verified.text?.slice(0, 300))} ` +
-        `content-type=${verified.headers['content-type'] ?? 'none'}`,
-    );
-  }
-
   return {
-    accessToken: verified.body.tokens.accessToken,
-    refreshToken: verified.body.tokens.refreshToken,
-    userId: verified.body.user._id,
+    accessToken: res.body.tokens.accessToken,
+    refreshToken: res.body.tokens.refreshToken,
+    userId: res.body.user._id,
   };
 };
 
-/** Full login: password step, then complete the emailed OTP. Returns a live session. */
+/** Full password login. Returns a live session. */
 export const loginUser = async (
   email = CREDENTIALS.email,
   password = CREDENTIALS.password,
@@ -86,19 +87,9 @@ export const loginUser = async (
     );
   }
 
-  const verified = await retryPhantom(
-    () => verifyOtp(res.body.challenge.challengeId, latestOtpCode()),
-    'login-otp-verify',
-  );
-  if (verified.status !== 200) {
-    throw new Error(
-      `loginUser OTP failed: ${verified.status} ${JSON.stringify(verified.body)}`,
-    );
-  }
-
   return {
-    accessToken: verified.body.tokens.accessToken,
-    refreshToken: verified.body.tokens.refreshToken,
-    userId: verified.body.user._id,
+    accessToken: res.body.tokens.accessToken,
+    refreshToken: res.body.tokens.refreshToken,
+    userId: res.body.user._id,
   };
 };
