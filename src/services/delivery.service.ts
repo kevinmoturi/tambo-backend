@@ -1,9 +1,9 @@
 import type { IDevice } from '../models/device.model';
 import PackDelivery from '../models/packDelivery.model';
 import type { ITheftEpisode } from '../models/theftEpisode.model';
-import TrustedContact from '../models/trustedContact.model';
 import User from '../models/user.model';
 import { isDuplicateKeyError } from '../utils/mongoErrors';
+import * as buddyService from './buddy.service';
 import { mailer } from './mailer';
 import type { MailMessage } from './mailer';
 import { buildPack } from './pack.service';
@@ -13,19 +13,15 @@ import { renderPackPdf } from './pack.pdf';
  * Email delivery (the backbone channel - Evidence doc S5.1). WhatsApp is a
  * later, opt-in-gated addition; nothing here assumes it.
  *
- * Recipients: the owner, plus trusted contacts who have not said no. Per the
- * Evidence doc, email alerts flow to a nominated contact before they opt in
- * (the opt-in gate is WhatsApp's) - but 'declined' and 'revoked' mean NO on
- * every channel, permanently.
+ * Recipients: the owner, plus every ACCEPTED buddy. A buddy is a Tambo user who
+ * accepted the invitation in-app - that acceptance is the consent, so pending,
+ * declined and revoked buddies receive nothing on any channel.
  */
 
-const eligibleContactEmails = async (userId: string): Promise<string[]> => {
-  const contacts = await TrustedContact.find({
-    user: userId,
-    consentState: { $in: ['pending', 'opted_in'] },
-  }).select('email');
-  return contacts.map((contact) => contact.email);
-};
+// Only ACCEPTED buddies receive alerts (their in-app accept is the consent);
+// declined/revoked/pending get nothing.
+const eligibleContactEmails = (userId: string): Promise<string[]> =>
+  buddyService.activeBuddyEmails(userId);
 
 /**
  * Records the send BEFORE dispatching. The partial unique index makes the
@@ -91,7 +87,7 @@ export const sendFirstAlert = async (
         ? 'Tambo is collecting evidence now. You will receive the full evidence ' +
           'pack as it uploads; you can also fetch it any time from the app.'
         : `You are receiving this because ${owner.name} nominated you as their ` +
-          'trusted contact. The evidence pack will follow so you can help them act quickly.',
+          'buddy. The evidence pack will follow so you can help them act quickly.',
       '',
       'First steps: block the SIM with the operator, and report at the nearest ' +
         'police station to get an OB number.',
@@ -120,7 +116,7 @@ export interface PackSendResult {
 
 /**
  * Builds the pack, renders the PDF, and emails it to the owner and every
- * eligible trusted contact. Re-sending is legitimate (more evidence may have
+ * eligible buddy. Re-sending is legitimate (more evidence may have
  * landed), so full_pack sends are recorded for audit rather than deduped.
  */
 export const sendPack = async (

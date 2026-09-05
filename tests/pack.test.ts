@@ -139,25 +139,34 @@ describe('first alert', () => {
     expect(await PackDelivery.countDocuments({ kind: 'first_alert' })).toBe(1);
   });
 
-  it('alerts pending and opted-in contacts, never declined ones', async () => {
+  it('alerts only accepted buddies, never pending or declined ones', async () => {
     const { accessToken } = await registerUser();
-    // three contacts in three states
+
+    // three buddies, each an actual Tambo user, in three link states
     for (const email of [
+      'accepted@tambo.app',
+      'declinedbuddy@tambo.app',
       'pending@tambo.app',
-      'optin@tambo.app',
-      'declined@tambo.app',
     ]) {
+      const buddy = await registerUser({ email });
       await request(testServer())
-        .post('/api/v1/trusted-contacts')
+        .post('/api/v1/buddies')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ name: 'C', email });
-      const link = /\/api\/v1\/consent\/([a-f\d]+)\//i.exec(
-        noopMailer.sent.at(-1)!.text,
-      )![1]!;
-      if (email === 'optin@tambo.app')
-        await request(testServer()).get(`/api/v1/consent/${link}/accept`);
-      if (email === 'declined@tambo.app')
-        await request(testServer()).get(`/api/v1/consent/${link}/decline`);
+        .send({ email });
+      const invites = await request(testServer())
+        .get('/api/v1/buddy-invites')
+        .set('Authorization', `Bearer ${buddy.accessToken}`);
+      const inviteId = invites.body.invites[0].id as string;
+      if (email === 'accepted@tambo.app') {
+        await request(testServer())
+          .post(`/api/v1/buddy-invites/${inviteId}/accept`)
+          .set('Authorization', `Bearer ${buddy.accessToken}`);
+      }
+      if (email === 'declinedbuddy@tambo.app') {
+        await request(testServer())
+          .post(`/api/v1/buddy-invites/${inviteId}/decline`)
+          .set('Authorization', `Bearer ${buddy.accessToken}`);
+      }
     }
     noopMailer.clear();
 
@@ -175,13 +184,12 @@ describe('first alert', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({});
 
-    await until(async () => (await firstAlerts()) >= 3);
+    // owner + the single accepted buddy = 2 first alerts
+    await until(async () => (await firstAlerts()) >= 2);
     const alertedTo = noopMailer.sent.map((mail) => mail.to).sort();
-    expect(alertedTo).toEqual([
-      'ada@tambo.app',
-      'optin@tambo.app',
-      'pending@tambo.app',
-    ]);
+    expect(alertedTo).toContain('accepted@tambo.app');
+    expect(alertedTo).not.toContain('declinedbuddy@tambo.app');
+    expect(alertedTo).not.toContain('pending@tambo.app');
   });
 
   it('never double-alerts: steal-recover-steal alerts once per episode', async () => {

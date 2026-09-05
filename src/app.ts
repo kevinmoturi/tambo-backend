@@ -4,11 +4,11 @@ import helmet from 'helmet';
 import config from './config/config';
 import authRoutes from './routes/auth.routes';
 import healthRoutes from './routes/health.routes';
-import consentRoutes from './routes/v1/consent.routes';
+import buddyRoutes from './routes/v1/buddy.routes';
+import buddyInviteRoutes from './routes/v1/buddyInvite.routes';
 import deviceRoutes from './routes/v1/device.routes';
 import evidenceRoutes from './routes/v1/evidence.routes';
 import episodeRoutes from './routes/v1/episode.routes';
-import trustedContactRoutes from './routes/v1/trustedContact.routes';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
 
 const app = express();
@@ -68,8 +68,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/v1/devices', deviceRoutes);
 app.use('/api/v1/evidence', evidenceRoutes);
 app.use('/api/v1/episodes', episodeRoutes);
-app.use('/api/v1/trusted-contacts', trustedContactRoutes);
-app.use('/api/v1/consent', consentRoutes);
+app.use('/api/v1/buddies', buddyRoutes);
+app.use('/api/v1/buddy-invites', buddyInviteRoutes);
 
 // --- Tail: unmatched routes, then the global error handler -----------------
 app.use(notFoundHandler);

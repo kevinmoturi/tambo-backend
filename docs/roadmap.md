@@ -164,6 +164,15 @@ record, never "forensic"), automatic first-alert email on episode open (once
 per recipient per episode via DB claim), full-pack email with PDF attachment
 to owner + eligible contacts, per-recipient delivery audit.
 
+### ✅ Buddy ecosystem redesign (2026-09-05)
+Trusted contacts (outside emails + emailed consent links) replaced by
+**buddies**: a directed link to a Tambo USER who accepts IN-APP. Invite by
+email resolves to an existing user or auto-binds when they sign up; only
+accepted buddies receive alerts; the public unauthenticated consent surface is
+gone. Gives every buddy a User id, so in-app / push / WhatsApp delivery has a
+real recipient, not just an address. Endpoints: `/api/v1/buddies` (owner),
+`/api/v1/buddy-invites` (buddy).
+
 **All three features (F-A, F-B, F-C) are built. The defensible core - "a
 theft becomes a filed, evidenced, insurer-ready pack" - is live end to end:**
 enrol device → evidence uploads → episode opens (threshold or owner) →

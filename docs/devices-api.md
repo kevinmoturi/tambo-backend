@@ -76,35 +76,50 @@ S2.3: time-to-first-alert is the metric that matters emotionally). Exactly
 once per recipient per episode, enforced by a database claim, so converging
 openers can never double-alert. The full pack follows via send-pack.
 
-## Trusted contacts
+## Buddies (people who receive alerts)
 
-A trusted contact is a third party — consent is THEIRS to give, not the
-owner's to tick (Evidence doc §5.2). States:
-`pending → opted_in | declined | revoked`.
+A buddy is a **Tambo user** the owner links to their account to receive theft
+alerts. Consent is the buddy's own IN-APP accept - there is no emailed consent
+link and no public unauthenticated surface. Only **accepted** buddies receive
+alerts. States: `pending -> active | declined | revoked`.
 
-### POST /trusted-contacts 🔒
+### Owner side
+
+**POST /buddies** 🔒 - invite by email.
 ```json
-{ "name": "Grace Hopper", "email": "grace@example.com", "phone": "+2547..." }
+{ "email": "grace@example.com", "name": "Grace" }
 ```
-`201` → contact (`pending`) and a nomination email to the CONTACT with
-equal-weight accept/decline links (single-use, 14-day expiry). Max 3 contacts
-per user; self-nomination and duplicates rejected. Rate-limited — Tambo must
-not be usable to pester a stranger's mailbox.
+`201` -> `{ buddy: { id, email, status: "pending" } }`. If that email is already
+a Tambo user the link binds to them immediately (still pending their accept);
+if not, it waits and binds when they sign up with that email. Always returns
+`pending`, so the endpoint never reveals whether the address is registered.
+Max 3 buddies; self-invite and duplicates refused; rate-limited (5/hour).
 
-### GET /trusted-contacts 🔒 · DELETE /trusted-contacts/:id 🔒
-### POST /trusted-contacts/:id/resend 🔒
-Re-sends with a FRESH link (old one dies). Per-contact cooldown (default 5
-min, `retryAfter` on 429); refused once the contact has answered.
+**GET /buddies** 🔒 - the owner's buddies with `status` and, once active, the
+buddy's real name.
 
-### GET /consent/:token/accept · GET /consent/:token/decline — PUBLIC
-Clicked from the contact's mailbox; responds with a small human-readable page.
-The token is consumed atomically: one answer, exactly once.
+**DELETE /buddies/:id** 🔒 - revoke a buddy (frees a slot; the person can be
+re-invited later).
+
+### Buddy side
+
+**GET /buddy-invites** 🔒 - invitations addressed to the caller (`from.name`,
+`status`).
+
+**POST /buddy-invites/:id/accept** · **/decline** 🔒 - the buddy's own answer.
+Accepting activates the link (alerts now flow to them); atomically claimed, so
+a concurrent double-tap records exactly one answer. Only the addressed user can
+act - someone else's invitation is invisible and un-actionable.
+
+Invitations to an email that is not yet a Tambo account **auto-bind** the moment
+that person registers with it (email ownership proven by the signup OTP) and
+then appear in their buddy-invites.
 
 ## Error code index (additions)
 
 | Code | Status |
 |---|---|
-| `contact_limit_reached`, `contact_is_self`, `contact_already_responded` | 400 |
-| `missing_device_token`, `invalid_device_token`, `invalid_consent_token` | 401 |
-| `device_not_found`, `episode_not_found`, `contact_not_found` | 404 |
-| `episode_open`, `contact_exists` | 409 |
+| `buddy_limit_reached`, `buddy_is_self` | 400 |
+| `missing_device_token`, `invalid_device_token` | 401 |
+| `device_not_found`, `episode_not_found`, `buddy_not_found`, `invite_not_found` | 404 |
+| `episode_open`, `buddy_exists` | 409 |

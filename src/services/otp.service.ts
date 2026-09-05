@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import config from '../config/config';
 import OtpChallenge from '../models/otpChallenge.model';
 import PasswordResetToken from '../models/passwordResetToken.model';
+import * as buddyService from './buddy.service';
 import type { IOtpChallenge, OtpPurpose } from '../models/otpChallenge.model';
 import User from '../models/user.model';
 import type { IUser } from '../models/user.model';
@@ -205,6 +206,8 @@ const applyPurpose = async (
         user.emailVerifiedAt = new Date();
         await user.save();
       }
+      // and binds any buddy invitations that were waiting on this email
+      await buddyService.bindPendingInvites(user);
       break;
     }
 
@@ -239,6 +242,7 @@ const applyPurpose = async (
       user.email = newEmail;
       user.emailVerifiedAt = new Date(); // the code just proved the new mailbox
       await user.save();
+      await buddyService.bindPendingInvites(user);
       // the login identifier changed - and reset links mailed to the OLD
       // address must die with it
       await revokeCredentialArtifacts(user._id.toString());
