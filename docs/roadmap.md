@@ -187,6 +187,14 @@ Delivery (Kenya-mapped JSON+PDF, Ed25519-signed manifest, first-alert +
 full-pack email via the live Resend spine). WhatsApp deferred. One open gate
 flagged for the owner: **hosting region** (blocks the DPIA, not the code).
 
+### Open product decision: access tier
+Whether Tambo stays a consumer-Play app (device-admin failed-unlock detection
+is the capability ceiling) or gains a **Device-Owner edition** for enrolled
+devices (the only lawful, consented route to kernel-depth access) is a
+distribution decision, not an engineering one — the backend serves both
+unchanged. Full analysis in
+[access-tiers-decision.md](access-tiers-decision.md).
+
 ## Not planned
 - Cookie/session auth for browsers — the API is token-based and mobile-first.
 - Social login — no requirement yet.

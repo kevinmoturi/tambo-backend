@@ -44,6 +44,7 @@ curl localhost:3000/api/health
 - [docs/evidence-features-plan.md](docs/evidence-features-plan.md) — the next three features: devices/episodes, evidence ingest, pack & delivery
 - [docs/cloudflare.md](docs/cloudflare.md) — operator runbook: Resend DNS, proxying, TRUST_PROXY
 - [docs/security.md](docs/security.md) — the threat model and what defends against what
+- [docs/access-tiers-decision.md](docs/access-tiers-decision.md) — how deep Tambo can go, and the consumer-vs-device-owner decision
 - [docs/roadmap.md](docs/roadmap.md) — build plan & status: what is done, what is next, open decisions
 
 ## Testing
